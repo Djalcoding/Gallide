@@ -4,13 +4,18 @@ pub mod ui{
     use tui::{backend::Backend, layout::{Constraint, Layout}, style::{Color, Style}, widgets::{Block, Borders, List, ListItem, ListState}, Frame};
 
     
-    fn build_entries() -> Vec<ListItem<'static>>{
-        vec![ListItem::new("Ahke"), ListItem::new("Not Ahke")]
+    fn build_entries(directories:&Vec<String>) -> Vec<ListItem<'static>>{
+        let mut entries = Vec::new();
+
+        for directory in directories {
+            entries.push(ListItem::new(directory.clone())); 
+        }
+        entries
 
     }
 
-    fn build_directory_list() -> List<'static>{
-        let items = build_entries();
+    fn build_directory_list(directories:&Vec<String>) -> List<'static>{
+        let items = build_entries(directories);
 
         List::new(items)
             .block(
@@ -26,9 +31,9 @@ pub mod ui{
             .highlight_symbol("> ")
     }
 
-    pub fn build_ui<B: Backend>(f: &mut Frame<B>, selected:usize){
+    pub fn build_ui<B: Backend>(f: &mut Frame<B>, selected:usize, directories:&Vec<String> ){
 
-        let mut constraints = vec![Constraint::Percentage(50), Constraint::Percentage(50)];
+        let constraints = vec![Constraint::Percentage(50), Constraint::Percentage(50)];
 
         let mut state:ListState = ListState::default();
         let chunks = Layout::default()
@@ -39,7 +44,7 @@ pub mod ui{
 
         state.select(Some(selected));
 
-        f.render_stateful_widget(build_directory_list(), chunks[0], &mut state);
+        f.render_stateful_widget(build_directory_list(directories), chunks[0], &mut state);
         f.render_widget(Block::default(), chunks[1]);
     }
 }
