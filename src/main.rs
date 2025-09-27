@@ -1,66 +1,86 @@
 use std::{
-    io::{self, stdin, Write}, process, sync::mpsc, thread
+    io::{self, stdin},
+    sync::mpsc,
+    thread,
 };
 
-use fzf_clone::{read_ls::get_directories, ui};
+use g_search::{
+    read_ls::get_directories,
+    ui::{self, Config, State},
+};
 use termion::{
     event::Key,
     input::TermRead,
     raw::IntoRawMode,
     screen::{ToAlternateScreen, ToMainScreen},
 };
-use tui::{Terminal, backend::TermionBackend};
+use tui::{Terminal, backend::TermionBackend, style::Color};
 
 fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let directories = get_directories();
-    let mut selected_id: usize = 0;
-    let mut running: bool = true;
 
-    let mut directory_name:String = String::from(".");
+    let mut state = State::new(directories);
+
+    let mut directory_name: String = String::from(".");
     println!("{ToAlternateScreen}");
-    
+
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
         let stdin = stdin();
         for c in stdin.keys().flatten() {
-            let _ =tx.send(c);
+            let _ = tx.send(c);
         }
     });
 
-    while running {        
+    while state.is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, selected_id, &directories);
+            ui::build_ui(f, &state, Config::from(Color::Red, Color::White, 10));
         });
         if let Ok(key) = rx.recv() {
-            match key {
-                Key::Up | Key::Char('k') => {
-                    if selected_id == 0 {
-                        selected_id = directories.len()-1;
+
+            
+            if state.is_inserting() { // Inserting
+                match key {
+                    Key::Esc | Key::Char('\n')=> state.switch_mode(),
+                    Key::Backspace => state.backspace(),
+                    Key::Char(character) =>{ state.add_character(character)}
+                    _ => {} 
+                }
+
+            } else { // Selecting
+                match key {
+                    Key::Up | Key::Char('k') => {
+                        state.decrement_selected_box();
                     }
-                    else{ selected_id -= 1;}
+                    Key::Down | Key::Char('j') => {
+                        state.increment_selected_box();
+                    }
+                    Key::Esc | Key::Char('q') => {
+                        directory_name = String::from('.');
+                        state.stop();
+                    }
+                    Key::Right | Key::Char('l') | Key::Char('\n') => {
+                        directory_name = state.get_selected_directory();
+                        state.stop();
+                    }
+                    Key::Left | Key::Char('h') => {
+                        directory_name = String::from("..");
+                        state.stop();
+                    }
+                    Key::Char('i') => state.switch_mode(),
+                    Key::Char('c') => state.clear_search_bar(),
+                    _ => {}
                 }
-                Key::Down | Key::Char('j') => {
-                    selected_id = (selected_id + 1) % directories.len();
-                }
-                Key::Char('q') => {
-                    println!("{ToMainScreen}");
-                    process::exit(0);
-                }
-                Key::Right | Key::Char('l') | Key::Char('\n')=>{
-                    directory_name = directories[selected_id].clone();
-                    running = false;
-                }
-                _ => {} 
             }
+
+
         }
-
     }
-    print!("{ToMainScreen}");
-    println!(" {directory_name}");
-
+    println!("{ToMainScreen}");
+    println!(" |{directory_name}|");
     Ok(())
 }
