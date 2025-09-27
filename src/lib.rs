@@ -98,15 +98,19 @@ pub mod ui {
         pub fn backspace(&mut self) {
             self.search_bar_text.pop();
             self.trim_directories();
+            self.selected_box = self.directories.len()-1;
         }
 
         pub fn add_character(&mut self, character:char){
             self.search_bar_text.push(character);
             self.trim_directories();
+            self.selected_box = self.directories.len()-1;
         }
 
         pub fn clear_search_bar(&mut self) {
             self.search_bar_text = String::new();
+            self.trim_directories();
+            self.selected_box = self.directories.len()-1;
         }
 
         pub fn stop(&mut self) {
