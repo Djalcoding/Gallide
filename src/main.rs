@@ -4,7 +4,7 @@ use std::{
     thread,
 };
 
-use g_search::{
+use gallide::{
     read_ls::get_directories,
     ui::{self, Config, State},
 };
@@ -38,7 +38,7 @@ fn main() -> Result<(), io::Error> {
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, &state, Config::from(Color::Red, Color::White, 10));
+            ui::build_ui(f, &state, Config::from(Color::Red, Color::White, 7));
         });
         if let Ok(key) = rx.recv() {
 
@@ -48,6 +48,12 @@ fn main() -> Result<(), io::Error> {
                     Key::Esc | Key::Char('\n')=> state.switch_mode(),
                     Key::Backspace => state.backspace(),
                     Key::Char(character) =>{ state.add_character(character)}
+                    Key::Up => {
+                        state.decrement_selected_box();
+                    }
+                    Key::Down =>{
+                        state.increment_selected_box();
+                    }
                     _ => {} 
                 }
 

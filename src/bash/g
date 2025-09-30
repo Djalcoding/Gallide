@@ -1,19 +1,24 @@
 #!/bin/bash
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="$SCRIPT_DIR/../../target/debug/g_search"
+if [ "$1" = "init" ]; then 
+    echo "alias g='. $SCRIPT_DIR/gallide';"
 
-
-script -qec "$BIN" $SCRIPT_DIR/temporaryScript.txt # Building a log file because this is the only way it actually works
-
-CLEANED=$(sed 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$SCRIPT_DIR/temporaryScript.txt" \
-  | grep -vE '^Script (started|done)' \
-  | sed '/^\s*$/d')
-
-OUTPUT=$(echo "$CLEANED" | tail -n 1 | grep -oE '\|[^|]+\|' | sed 's/^|\(.*\)|$/\1/')
-
-if [ -d "$OUTPUT" ]; then
-  cd "$OUTPUT"
 else
-  echo "Not a directory: $OUTPUT" >&2
-fi
+    BIN="/lib/gallide/gallide.bin"
 
+    script -qec "$BIN" /lib/gallide/temporaryScript.txt # Building a log file because this is the only way it actually works
+
+    CLEANED=$(sed 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "/lib/gallide/temporaryScript.txt" \
+    | grep -vE '^Script (started|done)' \
+    | sed '/^\s*$/d')
+
+    OUTPUT=$(echo "$CLEANED" | tail -n 1 | grep -oE '\|[^|]+\|' | sed 's/^|\(.*\)|$/\1/')
+
+    if [ -d "$OUTPUT" ]; then
+        cd "$OUTPUT"
+    else
+        echo "Not a directory: $OUTPUT" >&2
+    fi
+
+fi
