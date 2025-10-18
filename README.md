@@ -1,12 +1,16 @@
 <div align="center">
 
 # Gallide
+
+![Release](https://img.shields.io/github/downloads/Djalcoding/Gallide/total?style=flat-square) 
+
+
 Instead of constantly typing `cd`, `ls`, and `clear` to navigate your files, you now have to write a single command: `g`
 
 <a href="#getting-started">Getting Started</a> &nbsp;&nbsp; 
 <a href="#installation">Installation</a> &nbsp;&nbsp; 
 <a href="#whats-next">What's next ?</a> &nbsp;&nbsp; 
-
+[Download the latest release](https://github.com/Djalcoding/Gallide/releases/latest/download/FILENAME.zip)
 
 </div>
 
