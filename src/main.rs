@@ -5,7 +5,7 @@ use std::{
 };
 
 use gallide::{
-    read_ls::get_directories,
+    read_ls::{get_absolute_path_from_str, get_directories},
     ui::{self, Config, State},
 };
 use termion::{
@@ -20,11 +20,9 @@ fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let directories = get_directories();
-
+    let directories = get_directories(get_absolute_path_from_str(".").to_str().unwrap());
     let mut state = State::new(directories);
 
-    let mut directory_name: String = String::from(".");
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
@@ -38,16 +36,14 @@ fn main() -> Result<(), io::Error> {
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, &state, Config::from(Color::Red, Color::White, 7));
+            ui::build_ui(f, &state, Config::from(Color::Blue, Color::White));
         });
         if let Ok(key) = rx.recv() {
-
-            
             if state.is_inserting() { // Inserting
                 match key {
                     Key::Esc | Key::Char('\n')=> state.switch_mode(),
                     Key::Backspace => state.backspace(),
-                    Key::Char(character) =>{ state.add_character(character)}
+                    Key::Char(character) =>{state.add_character(character)}
                     Key::Up => {
                         state.decrement_selected_box();
                     }
@@ -66,16 +62,21 @@ fn main() -> Result<(), io::Error> {
                         state.increment_selected_box();
                     }
                     Key::Esc | Key::Char('q') => {
-                        directory_name = String::from('.');
+                        state.set_current_directory(state.get_current_directory());
                         state.stop();
                     }
-                    Key::Right | Key::Char('l') | Key::Char('\n') => {
-                        directory_name = state.get_selected_directory();
+                    Key::Right | Key::Char('l') => {
+                        state.set_current_directory(state.get_selected_directory());
+                        state.reset_selected_box();
+                        state.rebuild_directories();
+                    }
+                    Key::Char('\n') =>{
+                        state.set_current_directory(state.get_selected_directory());
                         state.stop();
                     }
                     Key::Left | Key::Char('h') => {
-                        directory_name = String::from("..");
-                        state.stop();
+                        state.go_back_one_directory();
+                        state.rebuild_directories();
                     }
                     Key::Char('i') => state.switch_mode(),
                     Key::Char('c') => state.clear_search_bar(),
@@ -87,6 +88,6 @@ fn main() -> Result<(), io::Error> {
         }
     }
     println!("{ToMainScreen}");
-    println!(" |{directory_name}|");
+    println!("{}", state.get_current_directory().display());
     Ok(())
 }

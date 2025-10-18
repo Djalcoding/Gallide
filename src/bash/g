@@ -1,24 +1,19 @@
 #!/bin/bash
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ "$1" = "init" ]; then 
+BIN="/lib/gallide/gallide.bin"
+if [ "$1" = "--init" ]; then 
     echo "alias g='. $SCRIPT_DIR/gallide';"
-
+elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "--Help Menu--"
+    echo "-h | --help  displays this menu" 
+    echo "--init       aliases g to gallide, this should be put in your .bashrc"
 else
-    BIN="/lib/gallide/gallide.bin"
-
-    script -qec "$BIN" /lib/gallide/temporaryScript.txt # Building a log file because this is the only way it actually works
-
-    CLEANED=$(sed 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "/lib/gallide/temporaryScript.txt" \
-    | grep -vE '^Script (started|done)' \
-    | sed '/^\s*$/d')
-
-    OUTPUT=$(echo "$CLEANED" | tail -n 1 | grep -oE '\|[^|]+\|' | sed 's/^|\(.*\)|$/\1/')
-
+    script -qec "$BIN" /tmp/gallide_log_file.txt # Building a log file because this is the only way it actually works
+    OUTPUT=$(tail -n 3 /tmp/gallide_log_file.txt | head -n 1)
     if [ -d "$OUTPUT" ]; then
         cd "$OUTPUT"
     else
         echo "Not a directory: $OUTPUT" >&2
     fi
-
 fi
+
