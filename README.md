@@ -29,4 +29,5 @@ eval "$(gallide --init)" # This will enable the g alias
 ## What's next ?
 - [ ] Add the ability for Gallide to behave like the default `cd` command 
 - [ ] Add file compatibility
-- [ ] Add Preview the content of a folder
+- [ ] Add preview of the content of a folder
+- [ ] Add configuration file
