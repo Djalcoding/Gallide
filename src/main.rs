@@ -5,8 +5,9 @@ use std::{
 };
 
 use gallide::{
+    config::*,
     read_ls::{get_absolute_path_from_str, get_directories},
-    ui::{self, Config, State},
+    ui::{self, State},
 };
 use termion::{
     event::Key,
@@ -14,15 +15,18 @@ use termion::{
     raw::IntoRawMode,
     screen::{ToAlternateScreen, ToMainScreen},
 };
-use tui::{Terminal, backend::TermionBackend, style::Color};
+use tui::{Terminal, backend::TermionBackend};
 
 fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let directories = get_directories(get_absolute_path_from_str(".").to_str().unwrap());
-    let mut state = State::new(directories);
-
+    let config = Config::default();
+    let directories = get_directories(
+        get_absolute_path_from_str(".").to_str().unwrap(),
+        config.directory_symbol(),
+    );
+    let mut state = State::new(directories, config);
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
@@ -36,24 +40,25 @@ fn main() -> Result<(), io::Error> {
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, &state, Config::from(Color::Blue, Color::White));
+            ui::build_ui(f, &state, Config::default());
         });
         if let Ok(key) = rx.recv() {
-            if state.is_inserting() { // Inserting
+            if state.is_inserting() {
+                // Inserting
                 match key {
-                    Key::Esc | Key::Char('\n')=> state.switch_mode(),
+                    Key::Esc | Key::Char('\n') => state.switch_mode(),
                     Key::Backspace => state.backspace(),
-                    Key::Char(character) =>{state.add_character(character)}
+                    Key::Char(character) => state.add_character(character),
                     Key::Up => {
                         state.decrement_selected_box();
                     }
-                    Key::Down =>{
+                    Key::Down => {
                         state.increment_selected_box();
                     }
-                    _ => {} 
+                    _ => {}
                 }
-
-            } else { // Selecting
+            } else {
+                // Selecting
                 match key {
                     Key::Up | Key::Char('k') => {
                         state.decrement_selected_box();
@@ -67,24 +72,25 @@ fn main() -> Result<(), io::Error> {
                     }
                     Key::Right | Key::Char('l') => {
                         state.set_current_directory(state.get_selected_directory());
-                        state.reset_selected_box();
                         state.rebuild_directories();
+                        state.move_selected_box_to_end();
+                        state.reset_search_bar();
                     }
-                    Key::Char('\n') =>{
+                    Key::Char('\n') => {
                         state.set_current_directory(state.get_selected_directory());
                         state.stop();
                     }
                     Key::Left | Key::Char('h') => {
                         state.go_back_one_directory();
                         state.rebuild_directories();
+                        state.move_selected_box_to_end();
+                        state.reset_search_bar();
                     }
                     Key::Char('i') => state.switch_mode(),
                     Key::Char('c') => state.clear_search_bar(),
                     _ => {}
                 }
             }
-
-
         }
     }
     println!("{ToMainScreen}");

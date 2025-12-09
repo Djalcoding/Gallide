@@ -1,14 +1,30 @@
     use std::{char, fmt::format, fs, io::{self, Write}, path::{Path, PathBuf}, process::Command};
 
 use crate::ui::Entry;
+    
+    pub enum ListCommandSettings{
+        FOLDERS,
+        FILES,
+        ALL
+    }
 
-    pub fn get_directories(current_folder:&str) -> Vec<Entry>{
+    fn get_output(current_folder:&str) -> String {
         let mut ls_command = Command::new("sh");
         ls_command
             .arg("-c")
             .arg(format!("ls -d {current_folder}/*/"));
         let output = &ls_command.output().unwrap().stdout;
-        let output_string:String = String::from_utf8(output.to_vec()).expect("NAN");
+        String::from_utf8(output.to_vec()).expect("NAN")
+    }
+
+    fn get_files_from_cli(current_folder:&str) {
+        let mut find_command = Command::new("sh");
+        find_command.arg("-c")
+        .arg(format!("find {current_folder} -maxdepth 1 -type f"));
+    }
+
+    pub fn get_directories(current_folder:&str, symbol:String) -> Vec<Entry>{
+        let output_string:String = get_output(current_folder);
         let mut entries:Vec<Entry> = Vec::new();
         
         let mut previous_folder:PathBuf = Path::new(current_folder).to_path_buf();
@@ -20,7 +36,7 @@ use crate::ui::Entry;
                 continue;
             } 
             let path = possible_path.unwrap().to_path_buf();
-            let name = String::from(path.file_name().unwrap().to_str().unwrap());
+            let name = format!("{symbol}{}",String::from(path.file_name().unwrap().to_str().unwrap()));
             entries.push(Entry::new(path, name));
         }
         entries
