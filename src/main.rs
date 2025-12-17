@@ -6,7 +6,7 @@ use std::{
 
 use gallide::{
     config::*,
-    read_ls::{get_absolute_path_from_str, get_directories},
+    read_ls::{get_absolute_path_from_str, get_folder_contents},
     ui::{self, State},
 };
 use termion::{
@@ -22,10 +22,11 @@ fn main() -> Result<(), io::Error> {
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let config = Config::default();
-    let directories = get_directories(
+    let directories = get_folder_contents(
         get_absolute_path_from_str(".").to_str().unwrap(),
         config.directory_symbol(),
-    );
+        config.file_symbol()
+    ).unwrap();
     let mut state = State::new(directories, config);
     println!("{ToAlternateScreen}");
 
@@ -67,24 +68,19 @@ fn main() -> Result<(), io::Error> {
                         state.increment_selected_box();
                     }
                     Key::Esc | Key::Char('q') => {
-                        state.set_current_directory(state.get_current_directory());
                         state.stop();
                     }
                     Key::Right | Key::Char('l') => {
-                        state.set_current_directory(state.get_selected_directory());
+                        state.open_selected_directory();
                         state.rebuild_directories();
-                        state.move_selected_box_to_end();
-                        state.reset_search_bar();
                     }
                     Key::Char('\n') => {
-                        state.set_current_directory(state.get_selected_directory());
+                        state.open_selected_directory();
                         state.stop();
                     }
                     Key::Left | Key::Char('h') => {
                         state.go_back_one_directory();
                         state.rebuild_directories();
-                        state.move_selected_box_to_end();
-                        state.reset_search_bar();
                     }
                     Key::Char('i') => state.switch_mode(),
                     Key::Char('c') => state.clear_search_bar(),
@@ -94,6 +90,6 @@ fn main() -> Result<(), io::Error> {
         }
     }
     println!("{ToMainScreen}");
-    println!("{}", state.get_current_directory().display());
+    println!("{}", state.get_bash_string());
     Ok(())
 }
