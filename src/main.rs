@@ -5,9 +5,7 @@ use std::{
 };
 
 use gallide::{
-    config::*,
-    read_ls::{get_absolute_path_from_str, get_folder_contents},
-    ui::{self, State},
+    config::*, read_ls::{get_absolute_path_from_str, get_folder_contents}, ui, ui_brain::State
 };
 use termion::{
     event::Key,
