@@ -1,8 +1,8 @@
-use std::path::PathBuf;
 use crate::{
     config::Config,
     read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents},
 };
+use std::path::PathBuf;
 
 pub enum Mode {
     INSERT,
@@ -154,7 +154,7 @@ impl State {
         self.reset_search_bar();
         self.move_selected_box_to_start()
     }
-    pub fn get_bash_string(&self) -> String {
+    pub fn get_bash_string(&self, exited: bool) -> String {
         format!(
             "({}'{})",
             if self.is_selecting_directory() {
@@ -162,7 +162,12 @@ impl State {
             } else {
                 "F"
             },
-            self.get_selected_path().display()
+            if exited {
+                self.get_current_directory()
+            }
+            else {
+                self.get_selected_path()
+            }.display()
         )
     }
 

@@ -5,7 +5,7 @@ use std::{
 };
 
 use gallide::{
-    config::*, read_ls::{get_absolute_path_from_str, get_folder_contents}, ui, ui_brain::State
+    config::*, progress_bar, read_ls::{get_absolute_path_from_str, get_folder_contents}, ui, ui_brain::State
 };
 use termion::{
     event::Key,
@@ -13,7 +13,7 @@ use termion::{
     raw::IntoRawMode,
     screen::{ToAlternateScreen, ToMainScreen},
 };
-use tui::{Terminal, backend::TermionBackend};
+use tui::{Terminal, backend::TermionBackend, symbols::braille};
 
 fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;
@@ -36,6 +36,8 @@ fn main() -> Result<(), io::Error> {
             let _ = tx.send(c);
         }
     });
+
+    let mut exited = false;
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
@@ -67,13 +69,13 @@ fn main() -> Result<(), io::Error> {
                     }
                     Key::Esc | Key::Char('q') => {
                         state.stop();
+                        exited = true;
                     }
                     Key::Right | Key::Char('l') => {
                         state.open_selected_directory();
                         state.rebuild_directories();
                     }
                     Key::Char('\n') => {
-                        state.open_selected_directory();
                         state.stop();
                     }
                     Key::Left | Key::Char('h') => {
@@ -88,6 +90,6 @@ fn main() -> Result<(), io::Error> {
         }
     }
     println!("{ToMainScreen}");
-    println!("{}", state.get_bash_string());
+    println!("{}", state.get_bash_string(exited));
     Ok(())
 }

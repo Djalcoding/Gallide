@@ -1,6 +1,7 @@
 pub mod config;
 pub mod read_ls;
 pub mod ui_brain;
+pub mod progress_bar;
 
 pub mod ui {
 
@@ -11,7 +12,7 @@ pub mod ui {
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Span, Spans},
-        widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
+        widgets::{Block, BorderType, Borders, LineGauge, List, ListItem, ListState, Paragraph},
     };
 
     use crate::{

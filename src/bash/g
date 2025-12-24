@@ -10,12 +10,22 @@ elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 elif [ "$1" ]; then
     cd "$1"
 else
-    script -qec "$BIN" /tmp/gallide_log_file.txt # Building a log file because this is the only way it actually works
-    OUTPUT=$(tail -n 3 /tmp/gallide_log_file.txt | head -n 1)
-    if [ -d "$OUTPUT" ]; then
-        cd "$OUTPUT"
+    LOGFILE="$(mktemp /tmp/gallide.XXXXXX)"
+    script -qec "$BIN" "$LOGFILE"
+    OUTPUT=$(tail -n 3 "$LOGFILE" | head -n 1)
+    rm "$LOGFILE"
+    ITEMPATH=$(echo $OUTPUT | grep -oP "(\/[^()]*)+")
+    if [[ "$OUTPUT" =~ ^\(D\'(\/.*)+\)$ ]]; then
+        cd "$ITEMPATH"
+    elif [[ "$OUTPUT" =~ ^\(F\'(\/.*)+\)$ ]]; then
+        if [ -n "$EDITOR" ]; then
+            "$EDITOR" "$ITEMPATH"
+        elif [ -n "$VISUAL" ]; then
+            "$VISUAL" "$ITEMPATH"
+        else
+            cat "$ITEMPATH"
+        fi
     else
-        echo "Not a directory: $OUTPUT" >&2
+        echo "Unknown item path : $OUTPUT" >&2
     fi
 fi
-
