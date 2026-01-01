@@ -5,7 +5,7 @@ use std::{
 };
 
 use gallide::{
-    config::*, progress_bar, read_ls::{get_absolute_path_from_str, get_folder_contents}, ui, ui_brain::State
+    config::*,  read_ls::{get_absolute_path_from_str, get_folder_contents}, ui, ui_brain::State
 };
 use termion::{
     event::Key,
@@ -13,7 +13,7 @@ use termion::{
     raw::IntoRawMode,
     screen::{ToAlternateScreen, ToMainScreen},
 };
-use tui::{Terminal, backend::TermionBackend, symbols::braille};
+use tui::{Terminal, backend::TermionBackend};
 
 fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;

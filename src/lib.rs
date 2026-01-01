@@ -1,11 +1,8 @@
 pub mod config;
 pub mod read_ls;
 pub mod ui_brain;
-pub mod progress_bar;
 
 pub mod ui {
-
-
     use tui::{
         Frame,
         backend::Backend,

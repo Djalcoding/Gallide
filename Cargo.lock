@@ -21,12 +21,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df8670b8c7b9dae1793364eafadf7239c40d669904660c5960d74cfd80b46a53"
 
 [[package]]
+name = "djal_parser"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96f505bdbfee68f6ff1d4bbe9396578b08eb1e8468e48b5ae0e57cbffe696098"
+dependencies = [
+ "hex",
+]
+
+[[package]]
 name = "gallide"
 version = "0.1.0"
 dependencies = [
+ "djal_parser",
  "termion 4.0.5",
  "tui",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "libc"
