@@ -1,7 +1,5 @@
 use std::{
-    io::{self, stdin},
-    sync::mpsc,
-    thread,
+    io::{self, stdin}, path::Path, sync::mpsc, thread
 };
 
 use gallide::{
@@ -19,11 +17,9 @@ fn main() -> Result<(), io::Error> {
     let stdout = io::stderr().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let config = Config::default();
+    let config = Config::from_file(Path::new("/home/bert/Projects/RustProjects/gallide/testconfig.dconf")).unwrap_or_default();
     let directories = get_folder_contents(
         get_absolute_path_from_str(".").to_str().unwrap(),
-        config.directory_symbol(),
-        config.file_symbol()
     ).unwrap();
     let mut state = State::new(directories, config);
     println!("{ToAlternateScreen}");
@@ -41,7 +37,7 @@ fn main() -> Result<(), io::Error> {
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, &state, Config::default());
+            ui::build_ui(f, &state, state.get_config());
         });
         if let Ok(key) = rx.recv() {
             if state.is_inserting() {

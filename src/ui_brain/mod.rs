@@ -16,11 +16,11 @@ pub struct State {
     current_dir: PathBuf,
     running: bool,
     mode: Mode,
-    config: Config<'static>,
+    config: Config,
 }
 
 impl State {
-    pub fn new(elements: Vec<Entry>, config: Config<'static>) -> State {
+    pub fn new(elements: Vec<Entry>, config: Config) -> State {
         State {
             selected_box: if elements.len() > 1 { 1 } else { 0 },
             elements,
@@ -63,22 +63,24 @@ impl State {
 
     pub fn trim_directories(&mut self) {
         let mut new_list: Vec<Entry> = Vec::new();
+        let mut curated_search_bar_text = String::from(self.search_bar_text.trim());
+        if !self.config.case_sensitive {
+            curated_search_bar_text  = curated_search_bar_text.to_lowercase();
+        }
+
         for element in get_folder_contents(
             self.current_dir.to_str().unwrap(),
-            self.config.directory_symbol(),
-            self.config.file_symbol(),
         )
         .unwrap()
         {
-            //TODO handle this
-            if element.name() == &String::from("..") {
+            let mut curated_name = element.name().clone();
+            if !self.config.case_sensitive {
+                curated_name = curated_name.to_lowercase(); 
+            }
+            if let Item::SpecialSign = element.entry_type {
                 new_list.push(element);
                 continue;
-            } else if element.name().starts_with(
-                format!("{}{}", self.config.directory_symbol(), self.search_bar_text).as_str(),
-            ) || element.name().starts_with(
-                format!("{}{}", self.config.file_symbol(), self.search_bar_text).as_str(),
-            ) {
+            } else if curated_name.starts_with(&curated_search_bar_text){
                 new_list.push(element);
             }
         }
@@ -89,8 +91,6 @@ impl State {
     pub fn rebuild_directories(&mut self) {
         self.elements = get_folder_contents(
             self.current_dir.to_str().expect("INVALID UNICODE"),
-            self.config.directory_symbol(),
-            self.config.file_symbol(),
         )
         .unwrap(); // TODO : Handle this
         self.move_selected_box_to_start()
@@ -192,5 +192,9 @@ impl State {
 
     fn set_current_directory(&mut self, new_directory: PathBuf) {
         self.current_dir = new_directory;
+    }
+
+    pub fn get_config(&self) -> &Config {
+        &self.config
     }
 }

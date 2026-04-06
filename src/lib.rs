@@ -9,34 +9,64 @@ pub mod ui {
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Span, Spans},
-        widgets::{Block, BorderType, Borders, LineGauge, List, ListItem, ListState, Paragraph},
+        widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
     };
 
     use crate::{
         config::Config,
-        read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents}, ui_brain::State,
+        read_ls::{Entry, Item},
+        ui_brain::State,
     };
-    fn build_entries(directories: Vec<&String>) -> Vec<ListItem<'static>> {
+
+    fn optionally_add_borders<'a>(block: Block<'a>, border_type: &Option<BorderType>) -> Block<'a>{
+        block
+            .borders(if border_type.is_some() {
+                Borders::ALL
+            } else {
+                Borders::NONE
+            })
+            .border_type(border_type.unwrap_or(BorderType::Plain))
+    }
+
+    fn build_entries<'a>(directories: &'a Vec<Entry>, config: &'a Config) -> Vec<ListItem<'a>> {
         let mut entries = Vec::new();
         for directory in directories {
-            entries.push(ListItem::new(directory.clone()));
+            let symbol: Span;
+            if let Item::File = directory.entry_type {
+                symbol = Span::styled(
+                    config.file_symbol(),
+                    Style::default().fg(config.file_symbol_color()),
+                );
+            } else if let Item::Folder = directory.entry_type {
+                symbol = Span::styled(
+                    config.directory_symbol(),
+                    Style::default().fg(config.directory_symbol_color()),
+                );
+            } else {
+                symbol = Span::raw("");
+            }
+
+            entries.push(ListItem::new(Spans::from(vec![
+                symbol,
+                Span::styled(directory.name(), Style::default().fg(config.list_color())),
+            ])));
         }
         entries
     }
 
-    fn build_directory_list<'b>(directories: &[Entry], config: &Config<'b>) -> List<'b> {
-        let names: Vec<&String> = directories.iter().map(|f| f.name()).collect();
-        let items = build_entries(names);
-        let mut style = Style::default().fg(Color::White);
+    fn build_directory_list<'b>(directories: &'b Vec<Entry>, config: &'b Config) -> List<'b> {
+        let items = build_entries(directories, config);
+        let mut style = Style::default().fg(config.list_color());
         if config.draw_background() {
             style = style.bg(config.background_color())
         }
         List::new(items)
             .block(
-                Block::default()
-                    .title("Directories")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded),
+                optionally_add_borders(
+                    Block::default()
+                    .title("Directories"),
+                    &config.border_type
+                ),
             )
             .style(style)
             .highlight_style(Style::default().fg(Color::Black).bg(config.focus_color()))
@@ -51,7 +81,7 @@ pub mod ui {
         });
         List::new(vec![ListItem::new(state.current_searchbar_text().clone())]).block(
             Block::default()
-                .title("Search bar")
+                .title(config.search_bar_title.clone())
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(border_style)
@@ -65,7 +95,7 @@ pub mod ui {
                 "Movement",
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(config.tooltip_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": jk/↓↑  ", Style::default().add_modifier(Modifier::ITALIC)),
@@ -73,7 +103,7 @@ pub mod ui {
                 "Exit",
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(config.tooltip_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": q/ESC  ", Style::default().add_modifier(Modifier::ITALIC)),
@@ -81,7 +111,7 @@ pub mod ui {
                 "Insert Mode",
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(config.tooltip_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": i  ", Style::default().add_modifier(Modifier::ITALIC)),
@@ -89,7 +119,7 @@ pub mod ui {
                 "Select",
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(config.tooltip_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": ↵/l/→  ", Style::default().add_modifier(Modifier::ITALIC)),
@@ -97,7 +127,7 @@ pub mod ui {
                 "Parent dir",
                 Style::default()
                     .fg(Color::Black)
-                    .bg(Color::White)
+                    .bg(config.tooltip_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": h/←  ", Style::default().add_modifier(Modifier::ITALIC)),
@@ -113,14 +143,15 @@ pub mod ui {
         .style(Style::default().bg(config.background_color()))
     }
 
-    pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: Config) {
-        let constraints = vec![
+    pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
+        let mut constraints = vec![
             Constraint::Length(1),
             Constraint::Min(0),
             Constraint::Length(3),
-            Constraint::Length(1),
         ];
-
+        if config.display_tooltips {
+            constraints.push(Constraint::Length(1));
+        }
         let mut list_state: ListState = ListState::default();
         let chunks = Layout::default()
             .direction(tui::layout::Direction::Vertical)
@@ -128,13 +159,15 @@ pub mod ui {
             .split(f.size());
 
         list_state.select(Some(state.get_selected_box()));
-        f.render_widget(build_path(state, &config), chunks[0]);
+        f.render_widget(build_path(state, config), chunks[0]);
         f.render_stateful_widget(
-            build_directory_list(state.elements(), &config),
+            build_directory_list(state.elements(), config),
             chunks[1],
             &mut list_state,
         );
-        f.render_widget(build_search_bar(state, &config), chunks[2]);
-        f.render_widget(build_tooltips(&config), chunks[3]);
+        f.render_widget(build_search_bar(state, config), chunks[2]);
+        if config.display_tooltips {
+            f.render_widget(build_tooltips(config), chunks[3]);
+        }
     }
 }

@@ -1,0 +1,30 @@
+!! Main Box
+field color: #ffffff
+background color: (25,23,36)
+  !! [Plain, Thick, Double, Rounded, None]
+border type: Thick
+
+!! Focus (Underline entries)
+  focus color: #ffffff
+  focus text: "> " 
+
+!! Directories
+directory symbol: " " 
+directory symbol color: #00ff99
+
+!! Files
+file symbol : "󰈔 "
+file symbol color: #00f0ff
+
+!! Search bar
+search bar color: #ffffff
+insert mode search bar color: #ff0066
+case sensitive: no
+search bar title: "Hewwo"
+  !! [Plain, Thick, Double, Rounded, None]
+search bar border type: Thick
+
+!! Tool Tips
+display tooltips: yes
+tooltip color: #ffffff
+

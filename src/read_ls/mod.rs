@@ -8,6 +8,7 @@ use std::{
 pub enum Item {
     File,
     Folder,
+    SpecialSign
 }
 
 pub struct Entry {
@@ -53,8 +54,6 @@ fn get_files(current_folder: &str) -> Result<String, Error> {
 
 pub fn get_folder_contents(
     current_folder: &str,
-    folder_symbol: String,
-    file_symbol: String,
 ) -> Result<Vec<Entry>, Error> {
     let folder_string: String = get_folders(current_folder)?;
     let file_string: String = get_files(current_folder)?;
@@ -65,7 +64,7 @@ pub fn get_folder_contents(
     entries.push(Entry::new(
         previous_folder,
         String::from(".."),
-        Item::Folder,
+        Item::SpecialSign,
     ));
     for string in folder_string.trim().split("\n") {
         let possible_path = Path::new(&String::from(string)).canonicalize();
@@ -73,11 +72,8 @@ pub fn get_folder_contents(
             continue;
         }
         let path = possible_path.unwrap().to_path_buf();
-        let name = format!(
-            "{folder_symbol}{}",
-            String::from(path.file_name().unwrap().to_str().unwrap())
-        );
-        entries.push(Entry::new(path, name, Item::Folder))
+        let name = String::from(path.file_name().unwrap().to_str().unwrap());
+        entries.push(Entry::new(path, name,  Item::Folder))
     }
 
     for string in file_string.trim().split("\n") {
@@ -86,10 +82,7 @@ pub fn get_folder_contents(
             continue;
         }
         let path = possible_path.unwrap().to_path_buf();
-        let name = format!(
-            "{file_symbol}{}",
-            String::from(path.file_name().unwrap().to_str().unwrap())
-        );
+        let name = String::from(path.file_name().unwrap().to_str().unwrap());
         entries.push(Entry::new(path, name, Item::File));
     }
     Ok(entries)
