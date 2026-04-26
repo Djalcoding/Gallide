@@ -50,9 +50,9 @@ struct SearchBarConfig {
 }
 struct TooltipConfig {
     pub display: bool,
-    pub tooltip_color: Color,
-    pub tooltip_keybind_color: Color,
-    pub tooltip_background_color: Color,
+    pub text_color: Color,
+    pub keybind_color: Color,
+    pub background_color: Color,
 }
 
 pub struct Config {
@@ -99,9 +99,9 @@ impl Default for Config {
             },
             tooltips: TooltipConfig {
                 display: true,
-                tooltip_color: Color::Black,
-                tooltip_keybind_color: Color::White,
-                tooltip_background_color: Color::White,
+                text_color: Color::Black,
+                keybind_color: Color::White,
+                background_color: Color::White,
             },
         }
     }

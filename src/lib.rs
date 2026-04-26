@@ -36,13 +36,13 @@ pub mod ui {
             let symbol: Span;
             if let Item::File = directory.entry_type {
                 symbol = Span::styled(
-                    config.file_symbol(),
-                    Style::default().fg(config.file_symbol_color()),
+                    &config.main_box.file_symbol,
+                    Style::default().fg(config.main_box.file_symbol_color),
                 );
             } else if let Item::Folder = directory.entry_type {
                 symbol = Span::styled(
-                    config.directory_symbol(),
-                    Style::default().fg(config.directory_symbol_color()),
+                    &config.main_box.directory_symbol,
+                    Style::default().fg(config.main_box.directory_symbol_color),
                 );
             } else {
                 symbol = Span::raw("");
@@ -50,7 +50,7 @@ pub mod ui {
 
             entries.push(ListItem::new(Spans::from(vec![
                 symbol,
-                Span::styled(directory.name(), Style::default().fg(config.field_color)),
+                Span::styled(directory.name(), Style::default().fg(config.main_box.text_color)),
             ])));
         }
         entries
@@ -58,46 +58,47 @@ pub mod ui {
 
     fn build_directory_list<'b>(directories: &'b Vec<Entry>, config: &'b Config) -> List<'b> {
         let items = build_entries(directories, config);
-        let mut style = Style::default().fg(config.border_color);
-        if config.draw_background() {
-            style = style.bg(config.background_color())
+        let mut style = Style::default().fg(config.main_box.border_config.border_color);
+        if config.main_box.background_color.is_some() {
+            style = style.bg(config.main_box.background_color.unwrap())
         }
-        let block = if config.title.is_empty()  {Block::default()} else {Block::default().title(config.title.clone())};
+        let block = if config.main_box.title.is_empty()  {Block::default()} else {Block::default().title(config.main_box.title.clone())};
         
         List::new(items)
             .block(optionally_add_borders(
                     block,
-                &config.border_type,
+                &config.main_box.border_config.border_type,
             ))
             .style(style)
-            .highlight_style(Style::default().fg(Color::Black).bg(config.focus_color()))
-            .highlight_symbol(config.focus_symbol())
+            .highlight_style(Style::default().fg(Color::Black).bg(config.main_box.focus_color))
+            .highlight_symbol(&config.main_box.focus_symbol)
     }
 
     fn build_search_bar<'a>(state: &State, config: &Config) -> List<'a> {
         let border_style = Style::default().fg(if state.is_inserting() {
-            config.insert_mode_color()
+            config.search_bar.insert_mode_border_config.border_color
         } else {
-            config.search_bar_color()
+            config.search_bar.border_config.border_color
         });
         let block = optionally_add_borders(
             Block::default()
-                .title(config.search_bar_title.clone())
+                .title(config.search_bar.title.clone())
                 .border_style(border_style)
-                .style(Style::default().bg(config.background_color())),
-            &config.search_bar_border_type,
+                .style(Style::default().bg(Color::Black)), // TODO: change this to
+                                                                        // background color
+            &config.search_bar.border_config.border_type,
         );
-        List::new(vec![ListItem::new(state.current_searchbar_text().clone())]).block(block)
+        List::new(vec![ListItem::new(state.current_searchbar_text())]).block(block)
     }
 
     fn build_tooltips(config: &Config) -> Paragraph<'static> {
         let header_style = Style::default()
-            .fg(config.tooltip_color)
-            .bg(config.tooltip_background_color)
+            .fg(config.tooltips.text_color)
+            .bg(config.tooltips.background_color)
             .add_modifier(Modifier::BOLD);
 
         let keybind_style = Style::default()
-            .fg(config.tooltip_keybind_color)
+            .fg(config.tooltips.keybind_color)
             .add_modifier(Modifier::ITALIC);
 
         Paragraph::new(Spans::from(vec![
@@ -112,7 +113,7 @@ pub mod ui {
             Span::styled("Parent dir", header_style),
             Span::styled(": h/←  ", keybind_style),
         ]))
-        .style(Style::default().bg(config.background_color()))
+        .style(Style::default().bg(Color::Black)) // TODO: change this to background color
     }
 
     fn build_path(state: &State, config: &Config) -> Paragraph<'static> {
@@ -120,19 +121,20 @@ pub mod ui {
             state.get_current_directory().display().to_string(),
             Style::default().add_modifier(Modifier::BOLD),
         )]))
-        .style(Style::default().bg(config.background_color()))
+        .style(Style::default().bg(Color::Black) )// TODO: change this to background color
+
     }
 
     pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
         let mut constraints = vec![];
-        if config.display_directory {
+        if config.directory_line.display {
             constraints.push(Constraint::Length(1));
         }
         constraints.push(Constraint::Min(0));
-        if config.enable_searchbar {
+        if config.search_bar.enabled {
             constraints.push(Constraint::Length(3));
         }
-        if config.display_tooltips {
+        if config.tooltips.display {
             constraints.push(Constraint::Length(1));
         }
         let mut list_state: ListState = ListState::default();
@@ -143,7 +145,7 @@ pub mod ui {
 
         list_state.select(Some(state.get_selected_box()));
         let mut it:usize = 0;
-        if config.display_directory {
+        if config.directory_line.display {
             f.render_widget(build_path(state, config), chunks[it]);
             it+=1;
         }
@@ -153,11 +155,11 @@ pub mod ui {
             &mut list_state,
         );
         it+=1;
-        if config.enable_searchbar {
+        if config.search_bar.enabled {
             f.render_widget(build_search_bar(state, config), chunks[it]);
             it+=1;
         }
-        if config.display_tooltips {
+        if config.tooltips.display {
             f.render_widget(build_tooltips(config), chunks[it]);
             it+=1;
         }
