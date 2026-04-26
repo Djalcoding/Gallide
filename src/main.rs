@@ -21,6 +21,7 @@ fn main() -> Result<(), io::Error> {
     let directories = get_folder_contents(
         get_absolute_path_from_str(".").to_str().unwrap(),
     ).unwrap();
+    let enable_searchbar = config.enable_searchbar;
     let mut state = State::new(directories, config);
     println!("{ToAlternateScreen}");
 
@@ -34,6 +35,7 @@ fn main() -> Result<(), io::Error> {
     });
 
     let mut exited = false;
+
 
     while state.is_running() {
         let _ = terminal.draw(|f| {
@@ -78,7 +80,7 @@ fn main() -> Result<(), io::Error> {
                         state.go_back_one_directory();
                         state.rebuild_directories();
                     }
-                    Key::Char('i') => state.switch_mode(),
+                    Key::Char('i') => if enable_searchbar {state.switch_mode()},
                     Key::Char('c') => state.clear_search_bar(),
                     _ => {}
                 }

@@ -157,7 +157,7 @@ impl State {
     pub fn get_bash_string(&self, exited: bool) -> String {
         format!(
             "({}'{})",
-            if self.is_selecting_directory() {
+            if self.is_selecting_directory() || exited{
                 "D"
             } else {
                 "F"

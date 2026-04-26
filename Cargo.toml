@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-djal_parser = "0.1.0"
+djal_parser = "0.1.2"
 termion = "4.0.5"
 tui = { version = "0.19", default-features = false, features = ['termion'] }

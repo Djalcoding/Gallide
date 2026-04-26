@@ -3,6 +3,8 @@ pub mod read_ls;
 pub mod ui_brain;
 
 pub mod ui {
+    use std::{sync::atomic::ATOMIC_USIZE_INIT, usize};
+
     use tui::{
         Frame,
         backend::Backend,
@@ -18,7 +20,7 @@ pub mod ui {
         ui_brain::State,
     };
 
-    fn optionally_add_borders<'a>(block: Block<'a>, border_type: &Option<BorderType>) -> Block<'a>{
+    fn optionally_add_borders<'a>(block: Block<'a>, border_type: &Option<BorderType>) -> Block<'a> {
         block
             .borders(if border_type.is_some() {
                 Borders::ALL
@@ -48,7 +50,7 @@ pub mod ui {
 
             entries.push(ListItem::new(Spans::from(vec![
                 symbol,
-                Span::styled(directory.name(), Style::default().fg(config.list_color())),
+                Span::styled(directory.name(), Style::default().fg(config.field_color)),
             ])));
         }
         entries
@@ -56,18 +58,17 @@ pub mod ui {
 
     fn build_directory_list<'b>(directories: &'b Vec<Entry>, config: &'b Config) -> List<'b> {
         let items = build_entries(directories, config);
-        let mut style = Style::default().fg(config.list_color());
+        let mut style = Style::default().fg(config.border_color);
         if config.draw_background() {
             style = style.bg(config.background_color())
         }
+        let block = if config.title.is_empty()  {Block::default()} else {Block::default().title(config.title.clone())};
+        
         List::new(items)
-            .block(
-                optionally_add_borders(
-                    Block::default()
-                    .title("Directories"),
-                    &config.border_type
-                ),
-            )
+            .block(optionally_add_borders(
+                    block,
+                &config.border_type,
+            ))
             .style(style)
             .highlight_style(Style::default().fg(Color::Black).bg(config.focus_color()))
             .highlight_symbol(config.focus_symbol())
@@ -79,58 +80,37 @@ pub mod ui {
         } else {
             config.search_bar_color()
         });
-        List::new(vec![ListItem::new(state.current_searchbar_text().clone())]).block(
+        let block = optionally_add_borders(
             Block::default()
                 .title(config.search_bar_title.clone())
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
                 .border_style(border_style)
                 .style(Style::default().bg(config.background_color())),
-        )
+            &config.search_bar_border_type,
+        );
+        List::new(vec![ListItem::new(state.current_searchbar_text().clone())]).block(block)
     }
 
     fn build_tooltips(config: &Config) -> Paragraph<'static> {
+        let header_style = Style::default()
+            .fg(config.tooltip_color)
+            .bg(config.tooltip_background_color)
+            .add_modifier(Modifier::BOLD);
+
+        let keybind_style = Style::default()
+            .fg(config.tooltip_keybind_color)
+            .add_modifier(Modifier::ITALIC);
+
         Paragraph::new(Spans::from(vec![
-            Span::styled(
-                "Movement",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(config.tooltip_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": jk/↓↑  ", Style::default().add_modifier(Modifier::ITALIC)),
-            Span::styled(
-                "Exit",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(config.tooltip_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": q/ESC  ", Style::default().add_modifier(Modifier::ITALIC)),
-            Span::styled(
-                "Insert Mode",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(config.tooltip_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": i  ", Style::default().add_modifier(Modifier::ITALIC)),
-            Span::styled(
-                "Select",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(config.tooltip_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": ↵/l/→  ", Style::default().add_modifier(Modifier::ITALIC)),
-            Span::styled(
-                "Parent dir",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(config.tooltip_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": h/←  ", Style::default().add_modifier(Modifier::ITALIC)),
+            Span::styled("Movement", header_style),
+            Span::styled(": jk/↓↑  ", keybind_style),
+            Span::styled("Exit", header_style),
+            Span::styled(": q/ESC  ", keybind_style),
+            Span::styled("Insert Mode", header_style),
+            Span::styled(": i  ", keybind_style),
+            Span::styled("Select", header_style),
+            Span::styled(": ↵/l/→  ", keybind_style),
+            Span::styled("Parent dir", header_style),
+            Span::styled(": h/←  ", keybind_style),
         ]))
         .style(Style::default().bg(config.background_color()))
     }
@@ -144,11 +124,14 @@ pub mod ui {
     }
 
     pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
-        let mut constraints = vec![
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(3),
-        ];
+        let mut constraints = vec![];
+        if config.display_directory {
+            constraints.push(Constraint::Length(1));
+        }
+        constraints.push(Constraint::Min(0));
+        if config.enable_searchbar {
+            constraints.push(Constraint::Length(3));
+        }
         if config.display_tooltips {
             constraints.push(Constraint::Length(1));
         }
@@ -159,15 +142,24 @@ pub mod ui {
             .split(f.size());
 
         list_state.select(Some(state.get_selected_box()));
-        f.render_widget(build_path(state, config), chunks[0]);
+        let mut it:usize = 0;
+        if config.display_directory {
+            f.render_widget(build_path(state, config), chunks[it]);
+            it+=1;
+        }
         f.render_stateful_widget(
             build_directory_list(state.elements(), config),
-            chunks[1],
+            chunks[it],
             &mut list_state,
         );
-        f.render_widget(build_search_bar(state, config), chunks[2]);
+        it+=1;
+        if config.enable_searchbar {
+            f.render_widget(build_search_bar(state, config), chunks[it]);
+            it+=1;
+        }
         if config.display_tooltips {
-            f.render_widget(build_tooltips(config), chunks[3]);
+            f.render_widget(build_tooltips(config), chunks[it]);
+            it+=1;
         }
     }
 }

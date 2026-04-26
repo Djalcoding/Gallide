@@ -9,7 +9,7 @@ pub fn tui_color(djal_color:djal_parser::color::Color) -> tui::style::Color {
 }
 
 pub fn get_border_type(key:&str, data_map:&ParsedData) -> Option<BorderType>{
-        let (_, raw_border_value) = data_map.as_raw(key).unwrap();
+        let (_, raw_border_value) = data_map.as_raw(key).unwrap_or((0,String::from("plain")));
         
         match raw_border_value.to_lowercase().as_str() {
             "rounded" => Some(BorderType::Rounded),
@@ -22,7 +22,8 @@ pub fn get_border_type(key:&str, data_map:&ParsedData) -> Option<BorderType>{
 }
 
 pub struct Config {
-    pub list_color: Option<Color>,
+    pub border_color: Color,
+    pub field_color: Color,
     pub search_bar_default_color: Option<Color>,
     pub insert_mode_color: Color,
     pub background_color: Option<Color>,
@@ -34,18 +35,25 @@ pub struct Config {
     pub file_symbol_color: Color,
     pub display_tooltips: bool,
     pub tooltip_color: Color,
+    pub tooltip_keybind_color: Color,
+    pub tooltip_background_color: Color,
     pub case_sensitive: bool,
     pub search_bar_title: String,
+    pub title: String,
     pub border_type: Option<BorderType>,
-    pub search_bar_border_type: Option<BorderType>
+    pub search_bar_border_type: Option<BorderType>,
+    pub display_directory: bool,
+    pub enable_searchbar: bool
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
+            display_directory: true,
             insert_mode_color: Color::Red,
-            list_color: Some(Color::Green),
-            background_color: Some(Color::Rgb(25, 23, 36)),
+            border_color: Color::White,
+            field_color: Color::White,
+            background_color: Some(Color::White),
             search_bar_default_color: Some(Color::White),
             focus_color: Some(Color::White),
             focus_symbol: String::from("> "),
@@ -54,36 +62,55 @@ impl Default for Config {
             file_symbol: String::from("󰈔 "),
             file_symbol_color: Color::White,
             display_tooltips: true,
-            tooltip_color: Color::White,
+            tooltip_color: Color::Black,
+            tooltip_background_color: Color::White,
+            tooltip_keybind_color: Color::White,
             case_sensitive: false,
+            title: String::from("Directories"),
             search_bar_title: String::from("Search bar"),
-            border_type: Some(BorderType::Rounded),
-            search_bar_border_type: Some(BorderType::Rounded)
+            border_type: Some(BorderType::Plain),
+            search_bar_border_type: Some(BorderType::Plain),
+            enable_searchbar:true,
         }
     }
 }
 
+type DColor = djal_parser::color::Color;
+
+
 impl Config {
     pub fn from_file(path: &Path) -> Result<Config, FileReadingError> {
         let parsed_data = ParsedData::from_file(path)?;
+        
+        let color = |c:DColor| {move || {c.clone()}};
+        let white = color(DColor::from_hexadecimal("#FFFFFF").unwrap());
+        let red = color(DColor::from_hexadecimal("#FF0000").unwrap());
+
+        let tooltip_background_color = parsed_data.as_color("tooltip background color").unwrap_or(DColor::rgb(255,255,255));
 
         Ok(Config {
-            list_color: Some(tui_color(parsed_data.as_color("field color").unwrap())),
-            search_bar_default_color: Some(tui_color(parsed_data.as_color("search bar color").unwrap())),
-            insert_mode_color: tui_color(parsed_data.as_color("insert mode search bar color").unwrap()),
-            background_color: Some(tui_color(parsed_data.as_color("background color").unwrap())),
-            focus_color: Some(tui_color(parsed_data.as_color("focus color").unwrap())),
-            focus_symbol: parsed_data.as_text("focus text").unwrap(),
-            directory_symbol: parsed_data.as_text("directory symbol").unwrap(),
-            directory_symbol_color: tui_color(parsed_data.as_color("directory symbol color").unwrap()),
-            file_symbol: parsed_data.as_text("file symbol").unwrap(),
-            file_symbol_color: tui_color(parsed_data.as_color("file symbol color").unwrap()),
-            display_tooltips: parsed_data.as_boolean("display tooltips").unwrap(),
-            tooltip_color: tui_color(parsed_data.as_color("tooltip color").unwrap()),
-            case_sensitive: parsed_data.as_boolean("case sensitive").unwrap(),
-            search_bar_title: parsed_data.as_text("search bar title").unwrap(),
+            field_color: tui_color(parsed_data.as_color("field color").unwrap_or(white())),
+            border_color: tui_color(parsed_data.as_color("border color").unwrap_or(white())),
+            search_bar_default_color: Some(tui_color(parsed_data.as_color("search bar color").unwrap_or(white()))),
+            insert_mode_color: tui_color(parsed_data.as_color("insert mode search bar color").unwrap_or(red())),
+            background_color: Some(tui_color(parsed_data.as_color("background color").unwrap_or_default())),
+            focus_color: Some(tui_color(parsed_data.as_color("focus color").unwrap_or(white()))),
+            focus_symbol: parsed_data.as_text("focus text").unwrap_or(String::from(">")),
+            directory_symbol: parsed_data.as_text("directory symbol").unwrap_or_default(),
+            directory_symbol_color: tui_color(parsed_data.as_color("directory symbol color").unwrap_or_default()),
+            file_symbol: parsed_data.as_text("file symbol").unwrap_or_default(),
+            file_symbol_color: tui_color(parsed_data.as_color("file symbol color").unwrap_or(white())),
+            display_tooltips: parsed_data.as_boolean("display tooltips").unwrap_or(true),
+            tooltip_background_color: tui_color(tooltip_background_color.clone()),
+            tooltip_color: tui_color(parsed_data.as_color("tooltip text color").unwrap_or(tooltip_background_color.clone().inverted())),
+            tooltip_keybind_color: tui_color(parsed_data.as_color("tooltip keybind color").unwrap_or(tooltip_background_color.clone())),
+            case_sensitive: parsed_data.as_boolean("case sensitive").unwrap_or_default(),
+            title : parsed_data.as_text("main title").unwrap_or(String::from("Directories")),
+            search_bar_title: parsed_data.as_text("search bar title").unwrap_or(String::from("Search bar")),
             border_type: get_border_type("border type", &parsed_data),
-            search_bar_border_type: get_border_type("search bar border type", &parsed_data)
+            search_bar_border_type: get_border_type("search bar border type", &parsed_data),
+            display_directory:parsed_data.as_boolean("display directory").unwrap_or(true),
+            enable_searchbar:parsed_data.as_boolean("enable searchbar").unwrap_or(true),
         })
     }
 
@@ -91,12 +118,6 @@ impl Config {
         self.insert_mode_color
     }
 
-    pub fn list_color(&self) -> Color {
-        if let Some(color) = self.list_color {
-            return color;
-        }
-        Color::Reset
-    }
 
     pub fn draw_background(&self) -> bool {
         self.background_color.is_some()
