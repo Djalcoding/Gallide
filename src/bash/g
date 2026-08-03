@@ -1,31 +1,66 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="/lib/gallide/gallide.bin"
+DIRECTORY_REP="D'"
+FILE_REP="F'"
+found_conf=false
+config_path=""
+
+for arg in "$@"
+do 
+    if [ $found_conf = "true" ]; then
+        config_path=$arg
+        found_conf=false
+        continue
+    fi
+    if [ $arg = "--init" ]; then
+        echo "alias g='. $SCRIPT_DIR/gallide';"
+        exit 0
+
+    elif [ $arg = "-h" ] || [ $arg = "--help" ]; then
+        echo "--Help Menu--"
+        echo "-h | --help  displays this menu" 
+        echo "--init       aliases g to gallide, this should be put in your .bashrc"
+        exit 0
+    elif [ $arg = "--config" ]; then
+        found_conf=true
+    fi
+done
+if [ $found_conf = "true" ]; then
+    echo "gallide: a filepath is expected after --config"
+    exit 1
+fi
+
 if [ "$1" = "--init" ]; then 
     echo "alias g='. $SCRIPT_DIR/gallide';"
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "--Help Menu--"
     echo "-h | --help  displays this menu" 
     echo "--init       aliases g to gallide, this should be put in your .bashrc"
-elif [ "$1" ]; then
-    cd "$1"
+elif [ "$1" ] && [[ ${1:0:2} != "--" ]]; then
+    if [[ "$(alias cd 2>/dev/null)" == "alias cd='g'" ]]; then
+        \cd "$1"
+    else 
+        cd $1
+    fi
 else
-    LOGFILE="$(mktemp /tmp/gallide.XXXXXX)"
-    script -qec "$BIN" "$LOGFILE"
-    OUTPUT=$(tail -n 3 "$LOGFILE" | head -n 1)
-    rm "$LOGFILE"
-    ITEMPATH=$(echo $OUTPUT | grep -oP "(\/[^()]*)+")
-    if [[ "$OUTPUT" =~ ^\(D\'(\/.*)+\)$ ]]; then
-        cd "$ITEMPATH"
-    elif [[ "$OUTPUT" =~ ^\(F\'(\/.*)+\)$ ]]; then
+    LOGFILE="$(\mktemp /tmp/gallide_out.XXXXXX)"
+    echo $config_path
+    "$BIN" "$config_path" 2>$LOGFILE # This actually runs the program
+    OUTPUT=$(\cat "$LOGFILE")
+    ITEM_TYPE=${OUTPUT:0:2}
+    ITEM_PATH=${OUTPUT:2}
+    if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
+            \cd $ITEM_PATH
+    elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
         if [ -n "$EDITOR" ]; then
-            "$EDITOR" "$ITEMPATH"
+            "$EDITOR" "$ITEM_PATH"
         elif [ -n "$VISUAL" ]; then
-            "$VISUAL" "$ITEMPATH"
-        else
-            cat "$ITEMPATH"
+            "$VISUAL" "$ITEM_PATH"
+        else 
+            cat "$ITEM_PATH"
         fi
     else
-        echo "Unknown item path : $OUTPUT" >&2
+        echo "Bash error; $LOGFILE contents : $OUTPUT" >&2
     fi
 fi

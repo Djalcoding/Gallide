@@ -3,9 +3,9 @@ pub mod read_ls;
 pub mod ui_brain;
 
 pub mod ui {
-    use std::{sync::atomic::ATOMIC_USIZE_INIT, usize};
+    use std::process::exit;
 
-    use tui::{
+use tui::{
         Frame,
         backend::Backend,
         layout::{Constraint, Layout},
@@ -30,6 +30,14 @@ pub mod ui {
             .border_type(border_type.unwrap_or(BorderType::Plain))
     }
 
+    fn optional_bg_style(color: Option<Color>) -> Style {
+        if let Some(c) = color {
+            Style::default().bg(c)
+        } else {
+            Style::default()
+        }
+    }
+
     fn build_entries<'a>(directories: &'a Vec<Entry>, config: &'a Config) -> Vec<ListItem<'a>> {
         let mut entries = Vec::new();
         for directory in directories {
@@ -50,7 +58,10 @@ pub mod ui {
 
             entries.push(ListItem::new(Spans::from(vec![
                 symbol,
-                Span::styled(directory.name(), Style::default().fg(config.main_box.text_color)),
+                Span::styled(
+                    directory.name(),
+                    Style::default().fg(config.main_box.text_color),
+                ),
             ])));
         }
         entries
@@ -62,15 +73,23 @@ pub mod ui {
         if config.main_box.background_color.is_some() {
             style = style.bg(config.main_box.background_color.unwrap())
         }
-        let block = if config.main_box.title.is_empty()  {Block::default()} else {Block::default().title(config.main_box.title.clone())};
-        
+        let block = if config.main_box.title.is_empty() {
+            Block::default()
+        } else {
+            Block::default().title(config.main_box.title.clone())
+        };
+
         List::new(items)
             .block(optionally_add_borders(
-                    block,
+                block,
                 &config.main_box.border_config.border_type,
             ))
             .style(style)
-            .highlight_style(Style::default().fg(Color::Black).bg(config.main_box.focus_color))
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(config.main_box.focus_color),
+            )
             .highlight_symbol(&config.main_box.focus_symbol)
     }
 
@@ -84,8 +103,7 @@ pub mod ui {
             Block::default()
                 .title(config.search_bar.title.clone())
                 .border_style(border_style)
-                .style(Style::default().bg(Color::Black)), // TODO: change this to
-                                                                        // background color
+                .style(optional_bg_style(config.search_bar.background_color)),
             &config.search_bar.border_config.border_type,
         );
         List::new(vec![ListItem::new(state.current_searchbar_text())]).block(block)
@@ -93,8 +111,8 @@ pub mod ui {
 
     fn build_tooltips(config: &Config) -> Paragraph<'static> {
         let header_style = Style::default()
+            .bg(config.tooltips.highlight_color)
             .fg(config.tooltips.text_color)
-            .bg(config.tooltips.background_color)
             .add_modifier(Modifier::BOLD);
 
         let keybind_style = Style::default()
@@ -113,7 +131,7 @@ pub mod ui {
             Span::styled("Parent dir", header_style),
             Span::styled(": h/←  ", keybind_style),
         ]))
-        .style(Style::default().bg(Color::Black)) // TODO: change this to background color
+        .style(optional_bg_style(config.main_box.background_color))
     }
 
     fn build_path(state: &State, config: &Config) -> Paragraph<'static> {
@@ -121,8 +139,7 @@ pub mod ui {
             state.get_current_directory().display().to_string(),
             Style::default().add_modifier(Modifier::BOLD),
         )]))
-        .style(Style::default().bg(Color::Black) )// TODO: change this to background color
-
+        .style(optional_bg_style(config.main_box.background_color))
     }
 
     pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
@@ -138,30 +155,27 @@ pub mod ui {
             constraints.push(Constraint::Length(1));
         }
         let mut list_state: ListState = ListState::default();
-        let chunks = Layout::default()
+        let mut chunks = Layout::default()
             .direction(tui::layout::Direction::Vertical)
             .constraints(constraints)
-            .split(f.size());
+            .split(f.size())
+            .into_iter()
+            ;
 
         list_state.select(Some(state.get_selected_box()));
-        let mut it:usize = 0;
         if config.directory_line.display {
-            f.render_widget(build_path(state, config), chunks[it]);
-            it+=1;
+            f.render_widget(build_path(state, config), chunks.next().unwrap());
         }
         f.render_stateful_widget(
             build_directory_list(state.elements(), config),
-            chunks[it],
+            chunks.next().unwrap(),
             &mut list_state,
         );
-        it+=1;
         if config.search_bar.enabled {
-            f.render_widget(build_search_bar(state, config), chunks[it]);
-            it+=1;
+            f.render_widget(build_search_bar(state, config), chunks.next().unwrap());
         }
         if config.tooltips.display {
-            f.render_widget(build_tooltips(config), chunks[it]);
-            it+=1;
+            f.render_widget(build_tooltips(config), chunks.next().unwrap());
         }
     }
 }

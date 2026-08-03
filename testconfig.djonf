@@ -1,0 +1,38 @@
+!! Main Box
+field color: #ffffff
+border color: #ffffff
+!! background color: (25,23,36)
+!! [Plain, Thick, Double, Rounded, None] !! default : Plain
+border type: Rounded
+
+!! Focus (Underline entries)
+  focus color: #ffffff
+  focus text: "> " 
+
+!! Directories
+main title: " Directories "
+directory symbol: " " 
+directory symbol color: #ffffff
+
+!! Files
+file symbol : "󰈔 "
+file symbol color: #ffffff
+
+!! Search bar
+searchbar border color: #ffffff
+searchbar text color: #ffffff
+insert searchbar color: #ff0066
+case sensitive: no
+searchbar title: " Search "
+    !! [Plain, Thick, Double, Rounded, None]
+searchbar border type: Rounded
+!! searchbar background color: #000000
+
+!! Tool Tips
+tooltip text color: #000000
+tooltip keybind color: #ffffff
+tooltip highlight color: #ffffff
+
+display directory: yes
+enable searchbar: yes
+display tooltips: yes
