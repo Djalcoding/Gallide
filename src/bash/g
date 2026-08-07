@@ -4,7 +4,20 @@ BIN="/lib/gallide/gallide.bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
 found_conf=false
+directory_path=""
+explorer=cd
 config_path=""
+
+
+quit() {
+    local code="${1:-0}"
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+        return 1
+    else
+        exit "$code"
+    fi
+}
+
 
 for arg in "$@"
 do 
@@ -14,53 +27,60 @@ do
         continue
     fi
     if [ $arg = "--init" ]; then
-        echo "alias g='. $SCRIPT_DIR/gallide';"
-        exit 0
-
+        echo "alias g='source $SCRIPT_DIR/gallide';"
+        quit || return
+    elif [ $arg = "-z" ]; then
+        explorer=z
     elif [ $arg = "-h" ] || [ $arg = "--help" ]; then
         echo "--Help Menu--"
-        echo "-h | --help  displays this menu" 
-        echo "--init       aliases g to gallide, this should be put in your .bashrc"
-        exit 0
+        echo "-h | --help           displays this menu" 
+        echo "--init                aliases g to gallide, this should be put in your .bashrc"
+        echo "--config <filepath>   set the config path"
+        echo "-z use zoxide instead of cd"
+        quit || return
     elif [ $arg = "--config" ]; then
         found_conf=true
+    elif [ "$arg" ]; then
+        if [[ $directory_path != "" ]]; then
+            echo "gallide: unknown argument '$arg'"
+            quit || return
+        fi
+        directory_path="$arg"
     fi
 done
 if [ $found_conf = "true" ]; then
     echo "gallide: a filepath is expected after --config"
-    exit 1
+    quit 1 || return 1
 fi
 
-if [ "$1" = "--init" ]; then 
-    echo "alias g='. $SCRIPT_DIR/gallide';"
-elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    echo "--Help Menu--"
-    echo "-h | --help  displays this menu" 
-    echo "--init       aliases g to gallide, this should be put in your .bashrc"
-elif [ "$1" ] && [[ ${1:0:2} != "--" ]]; then
-    if [[ "$(alias cd 2>/dev/null)" == "alias cd='g'" ]]; then
-        \cd "$1"
+if [[ $directory_path != "" ]]; then
+    if [[ "$(alias "$explorer" 2>/dev/null)" =~ ^alias[[:space:]]cd.*g ]]; then
+        command "$explorer" "$directory_path"
     else 
-        cd $1
+        "$explorer" "$directory_path"
+    fi
+        quit || return
+fi
+
+LOGFILE="$(\mktemp /tmp/gallide_out.XXXXXX)"
+if [[ $config_path == "" ]]; then
+    "$BIN" 2>$LOGFILE # This actually runs the program
+else
+    "$BIN" "$config_path" 2>$LOGFILE # This actually runs the program
+fi
+OUTPUT=$(\cat "$LOGFILE")
+ITEM_TYPE=${OUTPUT:0:2}
+ITEM_PATH=${OUTPUT:2}
+if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
+    \cd $ITEM_PATH
+elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
+    if [ -n "$EDITOR" ]; then
+        "$EDITOR" "$ITEM_PATH"
+    elif [ -n "$VISUAL" ]; then
+        "$VISUAL" "$ITEM_PATH"
+    else 
+        cat "$ITEM_PATH"
     fi
 else
-    LOGFILE="$(\mktemp /tmp/gallide_out.XXXXXX)"
-    echo $config_path
-    "$BIN" "$config_path" 2>$LOGFILE # This actually runs the program
-    OUTPUT=$(\cat "$LOGFILE")
-    ITEM_TYPE=${OUTPUT:0:2}
-    ITEM_PATH=${OUTPUT:2}
-    if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
-            \cd $ITEM_PATH
-    elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
-        if [ -n "$EDITOR" ]; then
-            "$EDITOR" "$ITEM_PATH"
-        elif [ -n "$VISUAL" ]; then
-            "$VISUAL" "$ITEM_PATH"
-        else 
-            cat "$ITEM_PATH"
-        fi
-    else
-        echo "Bash error; $LOGFILE contents : $OUTPUT" >&2
-    fi
+    echo "Bash error; $LOGFILE contents : $OUTPUT" >&2
 fi

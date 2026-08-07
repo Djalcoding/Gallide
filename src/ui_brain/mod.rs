@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents},
+    reporter::Reporter,
 };
 use std::path::PathBuf;
 
@@ -17,10 +18,11 @@ pub struct State {
     running: bool,
     mode: Mode,
     config: Config,
+    reporter: Reporter,
 }
 
 impl State {
-    pub fn new(elements: Vec<Entry>, config: Config) -> State {
+    pub fn new(elements: Vec<Entry>, config: Config, reporter: Reporter) -> Self {
         State {
             selected_box: if elements.len() > 1 { 1 } else { 0 },
             elements,
@@ -29,6 +31,7 @@ impl State {
             current_dir: get_absolute_path_from_str("."),
             mode: Mode::SELECTING,
             config,
+            reporter,
         }
     }
 
@@ -61,26 +64,43 @@ impl State {
         self.trim_directories();
     }
 
+    fn get_current_directory_str(&mut self) -> String {
+        let lossy = self.current_dir.to_string_lossy().to_string();
+        if self.current_dir.to_str().is_none() {
+            self.reporter
+                .push(format!("Invalid UTF-8 : {lossy}").as_str());
+        }
+        lossy
+    }
+
+    fn get_current_dir_folder_contents(&mut self) -> Vec<Entry> {
+        let contents = get_folder_contents(self.get_current_directory_str().as_str());
+        match contents {
+            Ok(entries) => entries,
+            Err(e) => {
+                self.reporter
+                    .push(format!("could not read contents of directory because : {e}").as_str());
+                self.stop();
+                vec![]
+            }
+        }
+    }
+
     pub fn trim_directories(&mut self) {
         let mut new_list: Vec<Entry> = Vec::new();
         let mut curated_search_bar_text = String::from(self.search_bar_text.trim());
         if !self.config.case_sensitive {
-            curated_search_bar_text  = curated_search_bar_text.to_lowercase();
+            curated_search_bar_text = curated_search_bar_text.to_lowercase();
         }
-
-        for element in get_folder_contents(
-            self.current_dir.to_str().unwrap(),
-        )
-        .unwrap()
-        {
+        for element in self.get_current_dir_folder_contents() {
             let mut curated_name = element.name().clone();
             if !self.config.case_sensitive {
-                curated_name = curated_name.to_lowercase(); 
+                curated_name = curated_name.to_lowercase();
             }
             if let Item::SpecialSign = element.entry_type {
                 new_list.push(element);
                 continue;
-            } else if curated_name.starts_with(&curated_search_bar_text){
+            } else if curated_name.starts_with(&curated_search_bar_text) {
                 new_list.push(element);
             }
         }
@@ -89,10 +109,7 @@ impl State {
     }
 
     pub fn rebuild_directories(&mut self) {
-        self.elements = get_folder_contents(
-            self.current_dir.to_str().expect("INVALID UNICODE"),
-        )
-        .unwrap(); // TODO : Handle this
+        self.elements = self.get_current_dir_folder_contents();
         self.move_selected_box_to_start()
     }
 
@@ -157,17 +174,17 @@ impl State {
     pub fn get_bash_string(&self, exited: bool) -> String {
         format!(
             "{}'{}",
-            if self.is_selecting_directory() || exited{
+            if self.is_selecting_directory() || exited {
                 "D"
             } else {
                 "F"
             },
             if exited {
                 self.get_current_directory()
-            }
-            else {
+            } else {
                 self.get_selected_path()
-            }.display()
+            }
+            .display()
         )
     }
 
@@ -196,5 +213,9 @@ impl State {
 
     pub fn get_config(&self) -> &Config {
         &self.config
+    }
+
+    pub fn publish_reports(&mut self) {
+        self.reporter.publish(); 
     }
 }

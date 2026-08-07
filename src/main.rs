@@ -9,6 +9,7 @@ use std::{
 use gallide::{
     config::*,
     read_ls::{get_absolute_path_from_str, get_folder_contents},
+    reporter::Reporter,
     ui,
     ui_brain::State,
 };
@@ -21,6 +22,7 @@ use termion::{
 use tui::{Terminal, backend::TermionBackend};
 
 fn main() -> Result<(), io::Error> {
+    let mut reporter = Reporter::new();
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -31,14 +33,25 @@ fn main() -> Result<(), io::Error> {
         Some(Path::new(&args[1]))
     };
     let config = if let Some(path) = config_path {
-        Config::from_file(path).unwrap_or_default()
+        Config::from_file(path).unwrap_or_else(|e| {
+            reporter.push(format!("Could not parse config : {e}",).as_str());
+            Config::default()
+        })
     } else {
         Config::default()
     };
-    let directories =
-        get_folder_contents(get_absolute_path_from_str(".").to_str().unwrap()).unwrap();
+    let directories = get_folder_contents(get_absolute_path_from_str(".").to_str().unwrap_or_else(
+        || {
+            reporter.push("Invalid UTF8 in start location");
+            ""
+        },
+    ))
+    .unwrap_or_else(|e| {
+        reporter.push(format!("could not get start location folder contents : {e}").as_str());
+        vec![]
+    });
     let enable_searchbar = config.search_bar.enabled;
-    let mut state = State::new(directories, config);
+    let mut state = State::new(directories, config, reporter);
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
@@ -97,6 +110,7 @@ fn main() -> Result<(), io::Error> {
         }
     }
     println!("{ToMainScreen}");
+    state.publish_reports();
     eprintln!("{}", state.get_bash_string(exited));
     Ok(())
 }

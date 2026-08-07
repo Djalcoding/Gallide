@@ -72,7 +72,7 @@ pub fn get_folder_contents(
             continue;
         }
         let path = possible_path.unwrap().to_path_buf();
-        let name = String::from(path.file_name().unwrap().to_str().unwrap());
+        let name = String::from(path.file_name().unwrap().to_string_lossy());
         entries.push(Entry::new(path, name,  Item::Folder))
     }
 

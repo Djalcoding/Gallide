@@ -1,10 +1,9 @@
 pub mod config;
 pub mod read_ls;
 pub mod ui_brain;
+pub mod reporter;
 
 pub mod ui {
-    use std::process::exit;
-
 use tui::{
         Frame,
         backend::Backend,
