@@ -1,6 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="/lib/gallide/gallide.bin"
+BIN="$HOME/.cargo/gallide-bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
 found_conf=false
@@ -8,7 +8,7 @@ directory_path=""
 explorer=cd
 config_path=""
 
-if test -f "$HOME/.config/gallide.conf" ; then
+if test -f "$HOME/.config/gallide.conf"; then
     config_path="$HOME/.config/gallide.conf";
 elif test -f "$HOME/.config/gallide/gallide.conf"; then
     config_path="$HOME/.config/gallide/gallide.conf";
@@ -23,6 +23,14 @@ quit() {
     fi
 }
 
+if test -f "$BIN"; then
+    :
+elif test -f "/lib/gallide/gallide.bin"; then
+    BIN="/lib/gallide/gallide.bin"
+else
+    echo "no gallide binary found"
+    quit || return
+fi
 
 for arg in "$@"
 do 
