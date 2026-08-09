@@ -2,7 +2,7 @@ use std::{
     env, io::{self, stdin}, path::Path, sync::mpsc, thread,
 };
 
-use gallide::{
+use gallide_bin::{
     config::*,
     read_ls::{get_absolute_path_from_str, get_folder_contents},
     reporter::Reporter,
