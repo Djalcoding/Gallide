@@ -26,7 +26,7 @@ chmod +x "$INSTALLATION_FILE"
 if ! test -d "$CONFIG_DIR"; then
     mkdir "$CONFIG_DIR"
 fi
-if ! test -f "$CONFIG_FILE" || [ $1 = "--rebuild-config" ]; then
+if ! test -f "$CONFIG_FILE" || [[ "$1" == "--rebuild-config" ]]; then
     touch "$CONFIG_FILE"
     curl -L "https://github.com/Djalcoding/Gallide/releases/latest/download/gallide.conf" --output "$CONFIG_FILE" || echo "Failed to fetch config file from github" 
     FILESIZE=$(stat --printf="%s" $CONFIG_FILE)
