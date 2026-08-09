@@ -1,6 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="$HOME/.cargo/gallide-bin"
+BIN="$HOME/.cargo/bin/gallide-bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
 found_conf=false
@@ -23,12 +23,13 @@ quit() {
     fi
 }
 
-if test -f "$BIN"; then
+if test -x "$BIN"; then
     :
-elif test -f "/lib/gallide/gallide.bin"; then
-    BIN="/lib/gallide/gallide.bin"
+elif test -f "/lib/gallide/gallide-bin"; then
+    BIN="/lib/gallide/gallide-bin"
 else
-    echo "no gallide binary found"
+    echo "could not use gallide binary, try reinstalling gallide"
+    echo "gallide should be in $BIN or /lib/gallide/gallide-bin"
     quit || return
 fi
 
