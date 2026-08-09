@@ -1,5 +1,4 @@
 <div align="center">
-TODO : Rework README
 # Gallide
 
 ![Release](https://img.shields.io/github/downloads/Djalcoding/Gallide/total?style=flat-square) 
@@ -35,3 +34,7 @@ eval "$(gallide --init)" # This will enable the g alias
 - [X] Add file compatibility
 - [ ] Add preview of the content of a folder
 - [X] Add configuration file
+
+
+
+TODO : Rework README
