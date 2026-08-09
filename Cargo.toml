@@ -1,8 +1,9 @@
 [package]
 name = "gallide-bin"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
-description = "The binary for gallide, this should not be used or installed directly"
+readme = "crateREADME.md"
+description = "The binary for gallide, this is meant to be called by an external bash script"
 homepage = "https://github.com/Djalcoding/Gallide"
 repository = "https://github.com/Djalcoding/Gallide"
 license-file = "LICENSE.txt"
