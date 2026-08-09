@@ -16,9 +16,9 @@ checksum = "df8670b8c7b9dae1793364eafadf7239c40d669904660c5960d74cfd80b46a53"
 
 [[package]]
 name = "djal_parser"
-version = "0.1.4"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4652f8f5265376c9f2f17bbe0ee6e79c646c86f416a9bbd6400de97154048920"
+checksum = "ccda8e5dadc42b522596e48e04f464d49d7a9949c8d8144e8ffa05e4c5eed4a9"
 dependencies = [
  "hex",
 ]

@@ -8,6 +8,11 @@ directory_path=""
 explorer=cd
 config_path=""
 
+if test -f "$HOME/.config/gallide.conf" ; then
+    config_path="$HOME/.config/gallide.conf";
+elif test -f "$HOME/.config/gallide/gallide.conf"; then
+    config_path="$HOME/.config/gallide/gallide.conf";
+fi
 
 quit() {
     local code="${1:-0}"
@@ -29,16 +34,31 @@ do
     if [ $arg = "--init" ]; then
         echo "alias g='source $SCRIPT_DIR/gallide';"
         quit || return
-    elif [ $arg = "-z" ]; then
+    elif [ $arg = "-z" ] || [ $arg = "--zoxide" ]; then
         explorer=z
     elif [ $arg = "-h" ] || [ $arg = "--help" ]; then
-        echo "--Help Menu--"
-        echo "-h | --help           displays this menu" 
-        echo "--init                aliases g to gallide, this should be put in your .bashrc"
-        echo "--config <filepath>   set the config path"
-        echo "-z use zoxide instead of cd"
+        echo "Usage: g [OPTION]..."
+        echo "Usage: g [OPTION]... [DIRECTORY]"
+        echo "  -h | --help                displays this menu" 
+        echo "  --init                     aliases g to gallide, \"\$(. gallide init)\"' should be put in your .bashrc"
+        echo "  -c | --config <filepath>   set the config path"
+        echo "  -z                         use zoxide instead of cd"
+        echo "TUI controls : "
+        echo "  k             move up"
+        echo "  j             move down"
+        echo "  l             enter selected directory"
+        echo "  h             go back one directory"
+        echo "  ESC           close interface on current directory"
+        echo "  i             enable insert mode"
+        echo "  Enter         open selected object"
+        echo ""
+        echo "Using a configuration :"
+        echo "  configs located in $HOME/.config/gallide.conf or $HOME/.config/gallide/gallide.conf"
+        echo "  will be automaticly detected and used unless overriden with the --config option"
+        echo ""
+        echo "Report bugs to : dbdevbugs@gmail.com"
         quit || return
-    elif [ $arg = "--config" ]; then
+    elif [ $arg = "--config" ] || [ $arg = "-c" ]; then
         found_conf=true
     elif [ "$arg" ]; then
         if [[ $directory_path != "" ]]; then

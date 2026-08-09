@@ -1,9 +1,5 @@
 use std::{
-    env,
-    io::{self, stdin},
-    path::Path,
-    sync::mpsc,
-    thread,
+    env, io::{self, stdin}, path::Path, sync::mpsc, thread,
 };
 
 use gallide::{

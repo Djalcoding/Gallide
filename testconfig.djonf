@@ -1,11 +1,11 @@
 !! Main Box
 field color: #ffffff
 border color: #ffffff
-!! background color: (25,23,36)
+background color: (25,23,36)
 !! [Plain, Thick, Double, Rounded, None] !! default : Plain
 border type: Rounded
 
-!! Focus (Underline entries)
+!! Focus 
   focus color: #ffffff
   focus text: "> " 
 

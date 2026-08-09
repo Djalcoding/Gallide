@@ -86,7 +86,7 @@ use tui::{
             .style(style)
             .highlight_style(
                 Style::default()
-                    .fg(Color::Black)
+                    .fg(config.main_box.focus_text_color)
                     .bg(config.main_box.focus_color),
             )
             .highlight_symbol(&config.main_box.focus_symbol)
