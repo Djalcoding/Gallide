@@ -2,6 +2,10 @@
 name = "gallide-bin"
 version = "0.1.0"
 edition = "2024"
+description = "The binary for gallide, this should not be used or installed directly"
+homepage = "https://github.com/Djalcoding/Gallide"
+repository = "https://github.com/Djalcoding/Gallide"
+license-file = "LICENSE.txt"
 
 [dependencies]
 djal_parser = "0.2.0"
