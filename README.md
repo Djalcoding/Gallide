@@ -3,7 +3,7 @@
 
 ![Release](https://img.shields.io/github/downloads/Djalcoding/Gallide/total?style=flat-square) 
 
-Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you now have to write a single command: `g`
+Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you can now write a single command: `g`
 
 [Showcase](#showcase) · [Features](#features) · [Getting Started](#getting-started) · [Installation](#installation)
 </div>
@@ -13,7 +13,7 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
 
 
 ## Features
-   - **GUI for viewing files and directories**
+   - **TUI for viewing files and directories**
    - **Vi controls support**
    - **fully customizable (with transparent background !)**
    - **cd-like usage**
@@ -54,3 +54,7 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
 
 ## What's next ?
 - [ ] Add preview 
+
+
+
+Made in Rust 🦀
