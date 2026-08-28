@@ -3,20 +3,39 @@
 
 ![Release](https://img.shields.io/github/downloads/Djalcoding/Gallide/total?style=flat-square) 
 
+Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you now have to write a single command: `g`
 
-Instead of constantly typing `cd`, `ls`, and `clear` to navigate your files, you now have to write a single command: `g`
-
-<a href="#getting-started">Getting Started</a> &nbsp;&nbsp; 
-<a href="#installation">Installation</a> &nbsp;&nbsp; 
-<a href="#whats-next">What's next ?</a> &nbsp;&nbsp; 
-[Download the latest release](https://github.com/Djalcoding/Gallide/releases/latest/download/FILENAME.zip)
-
+[Showcase](#showcase) · [Features](#features) · [Getting Started](#getting-started) · [Installation](#installation)
 </div>
 
-## Getting Started
-[Video](https://github.com/user-attachments/assets/e0ae68b3-a73a-4b4f-8292-58e1db93188a)
+## Showcase
+[Video](https://github.com/user-attachments/assets/438bba9a-3c0f-4b8f-ac58-af76d269a673)
 
-## Installation
+
+## Features
+   - **GUI for viewing files and directories**
+   - **Vi controls support**
+   - **fully customizable (with transparent background !)**
+   - **cd-like usage**
+   - **zoxide compatibility**
+
+## Getting Started  
+### **Usage:**
+```
+   g --help #displays help menu
+   g #opens the GUI
+   g <folder> #cd-like usage
+   g -z <folder> #use zoxide
+```
+
+### **Configurating**
+1. **Open ~/.config/gallide/gallide.conf**
+   * *~/.config/gallide.conf is also a valid filepath*
+2. **Refer to the [Documentation](not_done) to know what field to edit**
+   * *note : it uses the [dparser format](https://github.com/Djalcoding/dparser.rs)*
+3. 
+
+## Installation & Update script
 1. **Run the installation script**
    ```
    curl -fsSL https://github.com/Djalcoding/Gallide/releases/latest/download/install_gallide.sh| bash
@@ -26,12 +45,12 @@ Instead of constantly typing `cd`, `ls`, and `clear` to navigate your files, you
    eval "$(gallide --init)" # This will enable the g alias
    ```
 
+**Prerequesites**
+   - cargo
+   - curl
+   - bash (I think)
+   - zoxide (with -z paramter; optional)
+
+
 ## What's next ?
-- [X] Add the ability for Gallide to behave like the default `cd` command 
-- [X] Add file compatibility
-- [ ] Add preview of the content of a folder
-- [X] Add configuration file
-
-
-
-TODO : Rework README
+- [ ] Add preview 
