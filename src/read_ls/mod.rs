@@ -38,7 +38,7 @@ fn get_folders(current_folder: &str) -> Result<String, Error> {
     let mut ls_command = Command::new("sh");
     ls_command
         .arg("-c")
-        .arg(format!("ls -d {current_folder}/*/"));
+        .arg(format!("ls -a -d {current_folder}/*/"));
     let output = &ls_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown folder"))
 }

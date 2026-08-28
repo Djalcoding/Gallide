@@ -200,7 +200,7 @@ impl State {
         self.search_bar_text.clone()
     }
 
-    fn is_selecting_directory(&self) -> bool {
+    pub fn is_selecting_directory(&self) -> bool {
         if let Item::Folder = self.elements[self.selected_box].entry_type {
             return true;
         }

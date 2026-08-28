@@ -1,5 +1,9 @@
 use std::{
-    env, io::{self, stdin}, path::Path, sync::mpsc, thread,
+    env,
+    io::{self, stdin},
+    path::Path,
+    sync::mpsc,
+    thread,
 };
 
 use gallide_bin::{
@@ -36,16 +40,15 @@ fn main() -> Result<(), io::Error> {
     } else {
         Config::default()
     };
-    let directories = get_folder_contents(get_absolute_path_from_str(".").to_str().unwrap_or_else(
-        || {
+    let directories =
+        get_folder_contents(get_absolute_path_from_str(".").to_str().unwrap_or_else(|| {
             reporter.push("Invalid UTF8 in start location");
             ""
-        },
-    ))
-    .unwrap_or_else(|e| {
-        reporter.push(format!("could not get start location folder contents : {e}").as_str());
-        vec![]
-    });
+        }))
+        .unwrap_or_else(|e| {
+            reporter.push(format!("could not get start location folder contents : {e}").as_str());
+            vec![]
+        });
     let enable_searchbar = config.search_bar.enabled;
     let mut state = State::new(directories, config, reporter);
     println!("{ToAlternateScreen}");
@@ -86,8 +89,12 @@ fn main() -> Result<(), io::Error> {
                         exited = true;
                     }
                     Key::Right | Key::Char('l') => {
-                        state.open_selected_directory();
-                        state.rebuild_directories();
+                        if state.is_selecting_directory() {
+                            state.open_selected_directory();
+                            state.rebuild_directories();
+                        } else {
+                            state.stop();
+                        }
                     }
                     Key::Char('\n') => state.stop(),
                     Key::Left | Key::Char('h') => {
