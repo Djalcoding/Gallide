@@ -35,7 +35,7 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
    * *note : it uses the [dparser format](https://github.com/Djalcoding/dparser.rs)*
 3. 
 
-## Installation & Update script
+## Installation
 1. **Run the installation script**
    ```
    curl -fsSL https://github.com/Djalcoding/Gallide/releases/latest/download/install_gallide.sh| bash
@@ -44,7 +44,6 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
    ```
    eval "$(gallide --init)" # This will enable the g alias
    ```
-
 **Prerequesites**
    - cargo
    - curl
@@ -52,9 +51,12 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
    - zoxide (with -z paramter; optional)
 
 
+*note : this also works as an update script*
+
+
 ## What's next ?
 - [ ] Add preview 
 
 
 <br><br><br>
-Made in Rust 🦀
+Powered by Rust 🦀
