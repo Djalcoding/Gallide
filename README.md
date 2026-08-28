@@ -56,5 +56,5 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
 - [ ] Add preview 
 
 
-
+<br><br><br>
 Made in Rust 🦀
