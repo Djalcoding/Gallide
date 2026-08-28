@@ -31,7 +31,7 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
 ### **Configurating**
 1. **Open ~/.config/gallide/gallide.conf**
    * *~/.config/gallide.conf is also a valid filepath*
-2. **Refer to the [Documentation](not_done) to know what field to edit**
+2. **Refer to the [Wiki](https://github.com/Djalcoding/Gallide/wiki) to know what field to edit**
    * *note : it uses the [dparser format](https://github.com/Djalcoding/dparser.rs)*
 3. 
 
