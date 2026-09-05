@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "gallide-bin"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "djal_parser",
  "termion 4.0.6",

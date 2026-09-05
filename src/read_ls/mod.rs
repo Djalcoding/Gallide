@@ -8,7 +8,7 @@ use std::{
 pub enum Item {
     File,
     Folder,
-    SpecialSign
+    SpecialSign,
 }
 
 pub struct Entry {
@@ -38,7 +38,7 @@ fn get_folders(current_folder: &str) -> Result<String, Error> {
     let mut ls_command = Command::new("sh");
     ls_command
         .arg("-c")
-        .arg(format!("ls -a -d {current_folder}/*/"));
+        .arg(format!("ls -a -d \"{current_folder}\"/*/"));
     let output = &ls_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown folder"))
 }
@@ -47,14 +47,12 @@ fn get_files(current_folder: &str) -> Result<String, Error> {
     let mut find_command = Command::new("sh");
     find_command
         .arg("-c")
-        .arg(format!("find {current_folder} -maxdepth 1 -type f"));
+        .arg(format!("find \"{current_folder}\" -maxdepth 1 -type f"));
     let output = &find_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown file"))
 }
 
-pub fn get_folder_contents(
-    current_folder: &str,
-) -> Result<Vec<Entry>, Error> {
+pub fn get_folder_contents(current_folder: &str) -> Result<Vec<Entry>, Error> {
     let folder_string: String = get_folders(current_folder)?;
     let file_string: String = get_files(current_folder)?;
     let mut entries: Vec<Entry> = Vec::new();
@@ -73,7 +71,7 @@ pub fn get_folder_contents(
         }
         let path = possible_path.unwrap().to_path_buf();
         let name = String::from(path.file_name().unwrap().to_string_lossy());
-        entries.push(Entry::new(path, name,  Item::Folder))
+        entries.push(Entry::new(path, name, Item::Folder))
     }
 
     for string in file_string.trim().split("\n") {
