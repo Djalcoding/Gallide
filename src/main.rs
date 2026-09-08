@@ -23,7 +23,8 @@ use tui::{Terminal, backend::TermionBackend};
 
 fn main() -> Result<(), io::Error> {
     let mut reporter = Reporter::new();
-    let stdout = io::stdout().into_raw_mode()?;
+    let stdout = termion::get_tty()?.into_raw_mode()?;
+    
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let args: Vec<String> = env::args().collect();

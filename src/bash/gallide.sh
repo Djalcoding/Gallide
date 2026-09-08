@@ -17,7 +17,7 @@ fi
 quit() {
     local code="${1:-0}"
     if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-        return 1
+        return $code
     else
         exit "$code"
     fi
@@ -97,11 +97,27 @@ if [[ $config_path == "" ]]; then
 else
     "$BIN" "$config_path" 2>$LOGFILE # This actually runs the program
 fi
+
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    >&2 echo "Program crashed unexpectedly : $OUTPUT" 
+    quit $EXIT_CODE || return $EXIT_CODE
+fi
+
 OUTPUT=$(\cat "$LOGFILE")
 ITEM_TYPE=${OUTPUT:0:2}
 ITEM_PATH=${OUTPUT:2}
+
+if [ -t 1 ]; then
+    echo "From Terminal !"
+else
+    >&2 echo $EXIT_CODE
+fi
+
+
 if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
-    \cd $ITEM_PATH
+    \cd "$ITEM_PATH"
 elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
     if [ -n "$EDITOR" ]; then
         "$EDITOR" "$ITEM_PATH"
