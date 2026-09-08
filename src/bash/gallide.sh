@@ -88,20 +88,20 @@ if [[ $directory_path != "" ]]; then
     else 
         "$explorer" "$directory_path"
     fi
-        quit || return
+        quit 1 || return 1
 fi
 
 LOGFILE="$(\mktemp /tmp/gallide_out.XXXXXX)"
 if [[ $config_path == "" ]]; then
-    "$BIN" 2>$LOGFILE # This actually runs the program
+    "$BIN" 1>/dev/tty 2>$LOGFILE # This actually runs the program
 else
-    "$BIN" "$config_path" 2>$LOGFILE # This actually runs the program
+    "$BIN" "$config_path" 1>/dev/tty 2>$LOGFILE # This actually runs the program
 fi
 
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
-    >&2 echo "Program crashed unexpectedly : $OUTPUT" 
+    >&2 echo "Program crashed unexpectedly : ($EXIT_CODE) $OUTPUT" 
     quit $EXIT_CODE || return $EXIT_CODE
 fi
 
@@ -110,9 +110,10 @@ ITEM_TYPE=${OUTPUT:0:2}
 ITEM_PATH=${OUTPUT:2}
 
 if [ -t 1 ]; then
-    echo "From Terminal !"
+    : 
 else
-    >&2 echo $EXIT_CODE
+    echo "$ITEM_PATH"
+    quit || return
 fi
 
 
