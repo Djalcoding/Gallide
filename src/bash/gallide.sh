@@ -17,11 +17,13 @@ fi
 quit() {
     local code="${1:-0}"
     if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-        return $code
+        # if sourced
+        return 1 
     else
-        exit "$code"
+        exit $code
     fi
 }
+
 
 if test -x "$BIN"; then
     :
