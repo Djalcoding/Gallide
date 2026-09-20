@@ -3,18 +3,15 @@ use std::path::Path;
 use djal_parser::{datastructure::ParsedData, error_handling::FileReadingError};
 use tui::{style::Color, widgets::BorderType};
 
-
 type DColor = djal_parser::color::Color;
 type TColor = tui::style::Color;
 
-pub fn tui_color(
-    djal_color: Result<DColor, FileReadingError>,
-) -> Result<TColor, FileReadingError> {
-    let color: DColor= djal_color?;
+pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor, FileReadingError> {
+    let color: DColor = djal_color?;
     Ok(match color {
         DColor::RGB(r, g, b) => Color::Rgb(r, g, b),
-        DColor::RGBA(_, _, _,0) => Color::Reset,
-        DColor::RGBA(r, g, b,_) => Color::Rgb(r, g, b),
+        DColor::RGBA(_, _, _, 0) => Color::Reset,
+        DColor::RGBA(r, g, b, _) => Color::Rgb(r, g, b),
         DColor::PALETTE(0) => Color::Black,
         DColor::PALETTE(1) => Color::Red,
         DColor::PALETTE(2) => Color::Green,
@@ -234,7 +231,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_file(path: &Path) -> Result<Config, FileReadingError> {
+    pub fn from_file(path: &'_ Path) -> Result<Config, FileReadingError<'_>> {
         let parsed_data = ParsedData::from_file(path)?;
 
         Ok(Config {

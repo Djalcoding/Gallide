@@ -1,10 +1,11 @@
 pub mod config;
+pub mod file_control;
 pub mod read_ls;
-pub mod ui_brain;
 pub mod reporter;
+pub mod ui_brain;
 
 pub mod ui {
-use tui::{
+    use tui::{
         Frame,
         backend::Backend,
         layout::{Constraint, Layout},
@@ -37,9 +38,12 @@ use tui::{
         }
     }
 
-    fn build_entries<'a>(directories: &'a Vec<Entry>, config: &'a Config) -> Vec<ListItem<'a>> {
+    fn build_entries<'a, I>(directories: I, config: &'a Config) -> Vec<ListItem<'a>>
+    where
+        I: Iterator<Item = &'a Entry>,
+    {
         let mut entries = Vec::new();
-        for directory in directories {
+        directories.for_each(|directory| {
             let symbol: Span;
             if let Item::File = directory.entry_type {
                 symbol = Span::styled(
@@ -62,15 +66,32 @@ use tui::{
                     Style::default().fg(config.main_box.text_color),
                 ),
             ])));
-        }
+        });
         entries
     }
 
-    fn build_directory_list<'b>(directories: &'b Vec<Entry>, config: &'b Config) -> List<'b> {
+    fn build_text_input<'a>(title: &'a str, state: &'a State, config: &'a Config) -> Paragraph<'a> {
+        let mut style =
+            Style::default().fg(config.search_bar.insert_mode_border_config.border_color); // TODO : add config for main box
+        if let Some(background) = config.main_box.background_color {
+            style = style.bg(background)
+        }
+        Paragraph::new(state.read_user_input().as_str())
+            .style(Style::default().fg(Color::White)) // TODO : add config for text color
+            .block(optionally_add_borders(
+                Block::default().title(title).style(style),
+                &config.main_box.border_config.border_type,
+            ))
+    }
+
+    fn build_directory_list<'a, I>(directories: I, config: &'a Config) -> List<'a>
+    where
+        I: Iterator<Item = &'a Entry>,
+    {
         let items = build_entries(directories, config);
         let mut style = Style::default().fg(config.main_box.border_config.border_color);
-        if config.main_box.background_color.is_some() {
-            style = style.bg(config.main_box.background_color.unwrap())
+        if let Some(background) = config.main_box.background_color {
+            style = style.bg(background)
         }
         let block = if config.main_box.title.is_empty() {
             Block::default()
@@ -158,18 +179,25 @@ use tui::{
             .direction(tui::layout::Direction::Vertical)
             .constraints(constraints)
             .split(f.size())
-            .into_iter()
-            ;
+            .into_iter();
 
         list_state.select(Some(state.get_selected_box()));
         if config.directory_line.display {
             f.render_widget(build_path(state, config), chunks.next().unwrap());
         }
-        f.render_stateful_widget(
-            build_directory_list(state.elements(), config),
-            chunks.next().unwrap(),
-            &mut list_state,
-        );
+
+        if state.is_in_write_mode() {
+            f.render_widget(
+                build_text_input(state.user_input_title(), state, config),
+                chunks.next().unwrap(),
+            );
+        } else {
+            f.render_stateful_widget(
+                build_directory_list(state.elements().iter(), config),
+                chunks.next().unwrap(),
+                &mut list_state,
+            );
+        }
         if config.search_bar.enabled {
             f.render_widget(build_search_bar(state, config), chunks.next().unwrap());
         }

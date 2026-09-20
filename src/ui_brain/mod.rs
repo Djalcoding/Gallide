@@ -3,36 +3,70 @@ use crate::{
     read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents},
     reporter::Reporter,
 };
-use std::path::PathBuf;
+use std::{collections::VecDeque, path::PathBuf};
 
+#[derive(PartialEq, Clone)]
 pub enum Mode {
     INSERT,
+    WRITING,
     SELECTING,
+    DISCARD,
+}
+
+// returns how long to wait before reseting the state machine to selecting
+type ClosureT = Box<dyn FnOnce(&str) -> Option<(&str, String)>>;
+pub struct UserInputRequest {
+    pub title: String,
+    pub on_enter: Option<ClosureT>,
+}
+
+impl UserInputRequest {
+    pub fn new(title: String, on_enter: ClosureT) -> UserInputRequest {
+        UserInputRequest {
+            title,
+            on_enter: Some(on_enter),
+        }
+    }
+    pub fn get_closure(&mut self) -> ClosureT {
+        self.on_enter.take().unwrap()
+    }
 }
 
 pub struct State {
     selected_box: usize,
-    elements: Vec<Entry>,
+    elements: VecDeque<Entry>,
     search_bar_text: String,
     current_dir: PathBuf,
     running: bool,
-    mode: Mode,
+    pub mode: Mode,
     config: Config,
     reporter: Reporter,
+    user_input: String,
+    pub user_input_request: UserInputRequest,
 }
 
 impl State {
-    pub fn new(elements: Vec<Entry>, config: Config, reporter: Reporter) -> Self {
-        State {
-            selected_box: if elements.len() > 1 { 1 } else { 0 },
-            elements,
+    pub fn new(config: Config, reporter: Reporter) -> Self {
+        let mut state = State {
+            selected_box: 0,
+            elements: VecDeque::new(),
             search_bar_text: String::from(""),
             running: true,
             current_dir: get_absolute_path_from_str("."),
             mode: Mode::SELECTING,
             config,
             reporter,
+            user_input: String::new(),
+            user_input_request: UserInputRequest {
+                title: String::new(),
+                on_enter: None,
+            },
+        };
+        state.rebuild_directories();
+        if state.elements.len() > 1 {
+            state.selected_box = 1;
         }
+        state
     }
 
     pub fn get_selected_box(&self) -> usize {
@@ -87,7 +121,7 @@ impl State {
     }
 
     pub fn trim_directories(&mut self) {
-        let mut new_list: Vec<Entry> = Vec::new();
+        let mut new_list: VecDeque<Entry> = VecDeque::new();
         let mut curated_search_bar_text = String::from(self.search_bar_text.trim());
         if !self.config.case_sensitive {
             curated_search_bar_text = curated_search_bar_text.to_lowercase();
@@ -98,18 +132,24 @@ impl State {
                 curated_name = curated_name.to_lowercase();
             }
             if let Item::SpecialSign = element.entry_type {
-                new_list.push(element);
+                new_list.push_back(element);
                 continue;
             } else if curated_name.starts_with(&curated_search_bar_text) {
-                new_list.push(element);
+                new_list.push_back(element);
             }
         }
 
         self.elements = new_list;
     }
 
+    pub fn add_top_priority_entry(&mut self, entry: Entry) {
+        let previous_directory = self.elements.pop_front().unwrap();
+        self.elements.push_front(entry);
+        self.elements.push_front(previous_directory);
+    }
+
     pub fn rebuild_directories(&mut self) {
-        self.elements = self.get_current_dir_folder_contents();
+        self.elements = VecDeque::from_iter(self.get_current_dir_folder_contents());
         self.move_selected_box_to_start()
     }
 
@@ -192,7 +232,7 @@ impl State {
         self.current_dir.clone()
     }
 
-    pub fn elements(&self) -> &Vec<Entry> {
+    pub fn elements(&self) -> &VecDeque<Entry> {
         &self.elements
     }
 
@@ -216,6 +256,33 @@ impl State {
     }
 
     pub fn publish_reports(&mut self) {
-        self.reporter.publish(); 
+        self.reporter.publish();
+    }
+
+    pub fn user_input(&mut self) -> &mut String {
+        &mut self.user_input
+    }
+    pub fn read_user_input(&self) -> &String {
+        &self.user_input
+    }
+    pub fn user_input_title(&self) -> &String {
+        &self.user_input_request.title
+    }
+
+    pub fn ask_input(&mut self, config: UserInputRequest) {
+        self.user_input.clear();
+        self.user_input_request = config;
+        self.mode = Mode::WRITING;
+    }
+    pub fn is_in_write_mode(&self) -> bool {
+        matches!(self.mode, Mode::DISCARD | Mode::WRITING,)
+    }
+
+    pub fn remove_selected(&mut self) {
+        self.elements.remove(self.get_selected_box());
+    }
+    pub fn report_error(&mut self, title: &str, info: &str) {
+        self.user_input = String::from(info);
+        self.user_input_request.title = String::from(title);
     }
 }

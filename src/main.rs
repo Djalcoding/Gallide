@@ -1,17 +1,21 @@
+use core::time;
 use std::{
-    env,
+    cell::RefCell,
+    env, fs,
     io::{self, stdin},
     path::Path,
+    rc::Rc,
     sync::mpsc,
     thread,
 };
 
 use gallide_bin::{
     config::*,
-    read_ls::{get_absolute_path_from_str, get_folder_contents},
+    file_control::create_file,
+    read_ls::Entry,
     reporter::Reporter,
     ui,
-    ui_brain::State,
+    ui_brain::{Mode, State, UserInputRequest},
 };
 use termion::{
     event::Key,
@@ -41,17 +45,8 @@ fn main() -> Result<(), io::Error> {
     } else {
         Config::default()
     };
-    let directories =
-        get_folder_contents(get_absolute_path_from_str(".").to_str().unwrap_or_else(|| {
-            reporter.push("Invalid UTF8 in start location");
-            ""
-        }))
-        .unwrap_or_else(|e| {
-            reporter.push(format!("could not get start location folder contents : {e}").as_str());
-            vec![]
-        });
     let enable_searchbar = config.search_bar.enabled;
-    let mut state = State::new(directories, config, reporter);
+    let state = Rc::new(RefCell::new(State::new(config, reporter)));
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
@@ -64,57 +59,132 @@ fn main() -> Result<(), io::Error> {
     });
 
     let mut exited = false;
-    while state.is_running() {
+    while state.borrow().is_running() {
         let _ = terminal.draw(|f| {
-            ui::build_ui(f, &state, state.get_config());
+            let borrowed = state.borrow();
+            ui::build_ui(f, &borrowed, borrowed.get_config());
         });
-        if let Ok(key) = rx.recv() {
-            if state.is_inserting() {
-                // Inserting
-                match key {
-                    Key::Esc | Key::Char('\n') => state.switch_mode(),
-                    Key::Backspace => state.backspace(),
-                    Key::Char(character) => state.add_character(character),
-                    Key::Up => state.decrement_selected_box(),
-                    Key::Down => state.increment_selected_box(),
+        if let Ok(key) = rx.recv_timeout(time::Duration::from_millis(50)) {
+            let mode = state.borrow().mode.clone();
+            match mode {
+                Mode::INSERT => match key {
+                    Key::Esc | Key::Char('\n') => state.borrow_mut().switch_mode(),
+                    Key::Backspace => state.borrow_mut().backspace(),
+                    Key::Char(character) => state.borrow_mut().add_character(character),
+                    Key::Up => state.borrow_mut().decrement_selected_box(),
+                    Key::Down => state.borrow_mut().increment_selected_box(),
                     _ => {}
-                }
-            } else {
-                // Selecting
-                match key {
-                    Key::Up | Key::Char('k') => state.decrement_selected_box(),
-                    Key::Down | Key::Char('j') => state.increment_selected_box(),
+                },
+                Mode::SELECTING => match key {
+                    Key::Up | Key::Char('k') => state.borrow_mut().decrement_selected_box(),
+                    Key::Down | Key::Char('j') => state.borrow_mut().increment_selected_box(),
 
                     Key::Esc | Key::Char('q') => {
-                        state.stop();
+                        state.borrow_mut().stop();
                         exited = true;
                     }
                     Key::Right | Key::Char('l') => {
-                        if state.is_selecting_directory() {
-                            state.open_selected_directory();
-                            state.rebuild_directories();
+                        if state.borrow().is_selecting_directory() {
+                            state.borrow_mut().open_selected_directory();
+                            state.borrow_mut().rebuild_directories();
                         } else {
-                            state.stop();
+                            state.borrow_mut().stop();
                         }
                     }
-                    Key::Char('\n') => state.stop(),
                     Key::Left | Key::Char('h') => {
-                        state.go_back_one_directory();
-                        state.rebuild_directories();
+                        let mut mut_borrow = state.borrow_mut();
+                        mut_borrow.go_back_one_directory();
+                        mut_borrow.rebuild_directories();
                     }
+                    Key::Char('\n') => state.borrow_mut().stop(),
                     Key::Char('i') => {
                         if enable_searchbar {
-                            state.switch_mode()
+                            state.borrow_mut().switch_mode()
                         }
                     }
-                    Key::Char('c') => state.clear_search_bar(),
+                    Key::Char('c') => state.borrow_mut().clear_search_bar(),
+                    Key::Char('a') => {
+                        let state_callback = Rc::clone(&state);
+                        state.borrow_mut().ask_input(UserInputRequest::new(
+                            String::from(" Insert new file name "),
+                            Box::new(move |name| {
+                                let mut directory = state_callback.borrow().get_current_directory();
+                                let result = create_file(name, &directory);
+                                if let Err(e) = result {
+                                    Some((" Couldn't create file ", e.to_string()))
+                                } else {
+                                    directory.push(name);
+                                    state_callback
+                                        .borrow_mut()
+                                        .add_top_priority_entry(Entry::new(
+                                            directory.to_path_buf(),
+                                            String::from(name),
+                                            gallide_bin::read_ls::Item::File,
+                                        ));
+                                    Some((
+                                        " Operation Sucess ",
+                                        format!("   '{}' was properly created ! ", name),
+                                    ))
+                                }
+                            }),
+                        ));
+                    }
+                    Key::Char('d') => {
+                        let path = state.borrow().get_selected_path();
+                        let title = format!(
+                            " Delete {} ? (y/n)",
+                            path.file_name().unwrap().to_string_lossy()
+                        );
+
+                        let state_callback = Rc::clone(&state);
+                        state.borrow_mut().ask_input(UserInputRequest::new(
+                            title,
+                            Box::new(move |user_input| {
+                                match user_input.to_lowercase().as_str() {
+                                    "yes" | "y" => {
+                                        let _ = fs::remove_file(&path);
+                                        state_callback.borrow_mut().remove_selected();
+                                    }
+                                    _ => {}
+                                }
+                                Some((
+                                    " Operation Success ",
+                                    format!("{} was properly removed", path.to_string_lossy()),
+                                ))
+                            }),
+                        ));
+                    }
                     _ => {}
+                },
+                Mode::WRITING => match key {
+                    Key::Esc => state.borrow_mut().mode = Mode::SELECTING,
+                    Key::Char('\n') => {
+                        let user_input = state.borrow().read_user_input().clone();
+                        let request = state.borrow_mut().user_input_request.get_closure();
+                        let possible_error = request(&user_input);
+                        if let Some((error_title, error_text)) = possible_error {
+                            state
+                                .borrow_mut()
+                                .report_error(error_title, error_text.as_str());
+                            state.borrow_mut().mode = Mode::DISCARD
+                        } else {
+                            state.borrow_mut().mode = Mode::SELECTING
+                        }
+                    }
+                    Key::Char(character) => state.borrow_mut().user_input().push(character),
+                    Key::Backspace => {
+                        state.borrow_mut().user_input().pop();
+                    }
+                    _ => {}
+                },
+                Mode::DISCARD => {
+                    state.borrow_mut().mode = Mode::SELECTING;
                 }
             }
         }
     }
     println!("{ToMainScreen}");
-    state.publish_reports();
-    eprintln!("{}", state.get_bash_string(exited));
+    state.borrow_mut().publish_reports();
+    eprintln!("{}", state.borrow().get_bash_string(exited));
     Ok(())
 }
