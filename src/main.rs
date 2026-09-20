@@ -12,7 +12,7 @@ use std::{
 use gallide_bin::{
     config::*,
     file_control::create_file,
-    read_ls::Entry,
+    read_ls::{Entry, Item},
     reporter::Reporter,
     ui,
     ui_brain::{Mode, State, UserInputRequest},
@@ -137,16 +137,26 @@ fn main() -> Result<(), io::Error> {
                         );
 
                         let state_callback = Rc::clone(&state);
+
                         state.borrow_mut().ask_input(UserInputRequest::new(
                             title,
                             Box::new(move |user_input| {
-                                match user_input.to_lowercase().as_str() {
+                                let _: io::Result<()> = match user_input.to_lowercase().as_str() {
                                     "yes" | "y" => {
-                                        let _ = fs::remove_file(&path);
+                                        if let Err(e) = fs::remove_file(&path) {
+                                            return Some((
+                                                " Operation failure",
+                                                format!(
+                                                    "could not remove {} ({e})",
+                                                    path.to_string_lossy(),
+                                                ),
+                                            ));
+                                        }
                                         state_callback.borrow_mut().remove_selected();
+                                        Ok(())
                                     }
-                                    _ => {}
-                                }
+                                    _ => Ok(()),
+                                };
                                 Some((
                                     " Operation Success ",
                                     format!("{} was properly removed", path.to_string_lossy()),
@@ -154,11 +164,38 @@ fn main() -> Result<(), io::Error> {
                             }),
                         ));
                     }
+                    Key::Char('R') => {
+                        let path = state.borrow().get_selected_path();
+                        let title = format!(
+                            " Insert new name for {} ? ",
+                            path.file_name().unwrap().to_string_lossy()
+                        );
+
+                        let state_callback = Rc::clone(&state);
+                        state.borrow_mut().ask_input(UserInputRequest::new(
+                            title,
+                            Box::new(move |new_name| {
+                                let _ = fs::rename(path, new_name);
+                                state_callback
+                                    .borrow_mut()
+                                    .get_selected_entry()
+                                    .set_name(new_name);
+                                None
+                            }),
+                        ));
+                    }
                     _ => {}
                 },
                 Mode::WRITING => match key {
                     Key::Esc => state.borrow_mut().mode = Mode::SELECTING,
-                    Key::Char('\n') => {
+                    Key::Char('\n') => 'parse_user_input: {
+                        if state.borrow_mut().get_selected_entry().entry_type == Item::SpecialSign {
+                            state
+                                .borrow_mut()
+                                .report_error(" Illegal Instruction ", "Cannot operate on '..'");
+                            state.borrow_mut().mode = Mode::DISCARD;
+                            break 'parse_user_input;
+                        }
                         let user_input = state.borrow().read_user_input().clone();
                         let request = state.borrow_mut().user_input_request.get_closure();
                         let possible_error = request(&user_input);

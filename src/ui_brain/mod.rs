@@ -72,6 +72,9 @@ impl State {
     pub fn get_selected_box(&self) -> usize {
         self.selected_box
     }
+    pub fn get_selected_entry(&mut self) -> &mut Entry {
+        &mut self.elements[self.selected_box]
+    }
 
     pub fn increment_selected_box(&mut self) {
         self.selected_box = (self.selected_box + 1) % self.elements.len();

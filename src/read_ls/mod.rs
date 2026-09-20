@@ -5,6 +5,8 @@ use std::{
     process::Command,
 };
 
+
+#[derive(std::cmp::PartialEq)]
 pub enum Item {
     File,
     Folder,
@@ -31,6 +33,11 @@ impl Entry {
     }
     pub fn name(&self) -> &String {
         &self.name
+    }
+    pub fn set_name(&mut self, new_name:&str) {
+        self.name = String::from(new_name);
+        self.path.pop();
+        self.path.push(new_name);
     }
 }
 
