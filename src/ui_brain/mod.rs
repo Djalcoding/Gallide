@@ -1,9 +1,11 @@
+pub mod user_input;
+
 use crate::{
     config::Config,
     read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents},
     reporter::Reporter,
 };
-use std::{collections::VecDeque, path::PathBuf};
+use std::{cell::RefCell, collections::VecDeque, path::PathBuf, rc::Rc};
 
 #[derive(PartialEq, Clone)]
 pub enum Mode {
@@ -11,25 +13,6 @@ pub enum Mode {
     WRITING,
     SELECTING,
     DISCARD,
-}
-
-// returns how long to wait before reseting the state machine to selecting
-type ClosureT = Box<dyn FnOnce(&str) -> Option<(&str, String)>>;
-pub struct UserInputRequest {
-    pub title: String,
-    pub on_enter: Option<ClosureT>,
-}
-
-impl UserInputRequest {
-    pub fn new(title: String, on_enter: ClosureT) -> UserInputRequest {
-        UserInputRequest {
-            title,
-            on_enter: Some(on_enter),
-        }
-    }
-    pub fn get_closure(&mut self) -> ClosureT {
-        self.on_enter.take().unwrap()
-    }
 }
 
 pub struct State {
@@ -42,9 +25,10 @@ pub struct State {
     config: Config,
     reporter: Reporter,
     user_input: String,
-    pub user_input_request: UserInputRequest,
+    pub user_input_request: user_input::UserInputRequest,
 }
 
+pub type StateRcCell = Rc<RefCell<State>>;
 impl State {
     pub fn new(config: Config, reporter: Reporter) -> Self {
         let mut state = State {
@@ -57,7 +41,8 @@ impl State {
             config,
             reporter,
             user_input: String::new(),
-            user_input_request: UserInputRequest {
+            user_input_request: user_input::UserInputRequest {
+                edit_ressource: false,
                 title: String::new(),
                 on_enter: None,
             },
@@ -71,6 +56,9 @@ impl State {
 
     pub fn get_selected_box(&self) -> usize {
         self.selected_box
+    }
+    pub fn read_selected_entry(&self) -> &Entry {
+        &self.elements[self.selected_box]
     }
     pub fn get_selected_entry(&mut self) -> &mut Entry {
         &mut self.elements[self.selected_box]
@@ -156,10 +144,6 @@ impl State {
         self.move_selected_box_to_start()
     }
 
-    pub fn get_selected_path(&self) -> PathBuf {
-        self.elements[self.get_selected_box()].path().to_path_buf()
-    }
-
     pub fn go_back_one_directory(&mut self) {
         self.current_dir.pop();
     }
@@ -210,7 +194,7 @@ impl State {
             self.stop();
             return;
         }
-        self.set_current_directory(self.get_selected_path());
+        self.set_current_directory(self.read_selected_entry().path().to_path_buf());
         self.reset_search_bar();
         self.move_selected_box_to_start()
     }
@@ -225,14 +209,14 @@ impl State {
             if exited {
                 self.get_current_directory()
             } else {
-                self.get_selected_path()
+                self.read_selected_entry().path()
             }
             .display()
         )
     }
 
-    pub fn get_current_directory(&self) -> PathBuf {
-        self.current_dir.clone()
+    pub fn get_current_directory(&self) -> &PathBuf {
+        &self.current_dir
     }
 
     pub fn elements(&self) -> &VecDeque<Entry> {
@@ -272,7 +256,7 @@ impl State {
         &self.user_input_request.title
     }
 
-    pub fn ask_input(&mut self, config: UserInputRequest) {
+    pub fn ask_input(&mut self, config: user_input::UserInputRequest) {
         self.user_input.clear();
         self.user_input_request = config;
         self.mode = Mode::WRITING;
@@ -281,11 +265,16 @@ impl State {
         matches!(self.mode, Mode::DISCARD | Mode::WRITING,)
     }
 
+    pub fn selecting_previous_dir(&self) -> bool {
+        self.get_selected_box() == 0
+    }
+
     pub fn remove_selected(&mut self) {
         self.elements.remove(self.get_selected_box());
     }
-    pub fn report_error(&mut self, title: &str, info: &str) {
+    pub fn show_message(&mut self, title: &str, info: &str) {
         self.user_input = String::from(info);
         self.user_input_request.title = String::from(title);
+        self.mode = Mode::DISCARD;
     }
 }

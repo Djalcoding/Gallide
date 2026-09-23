@@ -1,7 +1,7 @@
 use core::time;
 use std::{
     cell::RefCell,
-    env, fs,
+    env,
     io::{self, stdin},
     path::Path,
     rc::Rc,
@@ -11,11 +11,10 @@ use std::{
 
 use gallide_bin::{
     config::*,
-    file_control::create_file,
-    read_ls::{Entry, Item},
+    file_control::{create_ressource_request, delete_ressource_request, rename_ressource_request},
     reporter::Reporter,
     ui,
-    ui_brain::{Mode, State, UserInputRequest},
+    ui_brain::{Mode, State, user_input::UserOperationResult},
 };
 use termion::{
     event::Key,
@@ -104,108 +103,46 @@ fn main() -> Result<(), io::Error> {
                     }
                     Key::Char('c') => state.borrow_mut().clear_search_bar(),
                     Key::Char('a') => {
-                        let state_callback = Rc::clone(&state);
-                        state.borrow_mut().ask_input(UserInputRequest::new(
-                            String::from(" Insert new file name "),
-                            Box::new(move |name| {
-                                let mut directory = state_callback.borrow().get_current_directory();
-                                let result = create_file(name, &directory);
-                                if let Err(e) = result {
-                                    Some((" Couldn't create file ", e.to_string()))
-                                } else {
-                                    directory.push(name);
-                                    state_callback
-                                        .borrow_mut()
-                                        .add_top_priority_entry(Entry::new(
-                                            directory.to_path_buf(),
-                                            String::from(name),
-                                            gallide_bin::read_ls::Item::File,
-                                        ));
-                                    Some((
-                                        " Operation Sucess ",
-                                        format!("   '{}' was properly created ! ", name),
-                                    ))
-                                }
-                            }),
-                        ));
+                        state
+                            .borrow_mut()
+                            .ask_input(create_ressource_request(Rc::clone(&state)));
                     }
                     Key::Char('d') => {
-                        let path = state.borrow().get_selected_path();
-                        let title = format!(
-                            " Delete {} ? (y/n)",
-                            path.file_name().unwrap().to_string_lossy()
-                        );
-
-                        let state_callback = Rc::clone(&state);
-
-                        state.borrow_mut().ask_input(UserInputRequest::new(
-                            title,
-                            Box::new(move |user_input| {
-                                let _: io::Result<()> = match user_input.to_lowercase().as_str() {
-                                    "yes" | "y" => {
-                                        if let Err(e) = fs::remove_file(&path) {
-                                            return Some((
-                                                " Operation failure",
-                                                format!(
-                                                    "could not remove {} ({e})",
-                                                    path.to_string_lossy(),
-                                                ),
-                                            ));
-                                        }
-                                        state_callback.borrow_mut().remove_selected();
-                                        Ok(())
-                                    }
-                                    _ => Ok(()),
-                                };
-                                Some((
-                                    " Operation Success ",
-                                    format!("{} was properly removed", path.to_string_lossy()),
-                                ))
-                            }),
-                        ));
+                        let path = state.borrow().read_selected_entry().path().clone();
+                        state
+                            .borrow_mut()
+                            .ask_input(delete_ressource_request(path, Rc::clone(&state)));
                     }
-                    Key::Char('R') => {
-                        let path = state.borrow().get_selected_path();
-                        let title = format!(
-                            " Insert new name for {} ? ",
-                            path.file_name().unwrap().to_string_lossy()
-                        );
-
-                        let state_callback = Rc::clone(&state);
-                        state.borrow_mut().ask_input(UserInputRequest::new(
-                            title,
-                            Box::new(move |new_name| {
-                                let _ = fs::rename(path, new_name);
-                                state_callback
-                                    .borrow_mut()
-                                    .get_selected_entry()
-                                    .set_name(new_name);
-                                None
-                            }),
-                        ));
+                    Key::Char('r') => {
+                        let path = state.borrow().read_selected_entry().path().clone();
+                        state
+                            .borrow_mut()
+                            .ask_input(rename_ressource_request(path, Rc::clone(&state)));
                     }
                     _ => {}
                 },
+                #[allow(clippy::needless_late_init)]
                 Mode::WRITING => match key {
                     Key::Esc => state.borrow_mut().mode = Mode::SELECTING,
-                    Key::Char('\n') => 'parse_user_input: {
-                        if state.borrow_mut().get_selected_entry().entry_type == Item::SpecialSign {
-                            state
-                                .borrow_mut()
-                                .report_error(" Illegal Instruction ", "Cannot operate on '..'");
-                            state.borrow_mut().mode = Mode::DISCARD;
-                            break 'parse_user_input;
-                        }
+                    Key::Char('\n') => {
                         let user_input = state.borrow().read_user_input().clone();
                         let request = state.borrow_mut().user_input_request.get_closure();
-                        let possible_error = request(&user_input);
-                        if let Some((error_title, error_text)) = possible_error {
+
+                        let result: UserOperationResult;
+                        if state.borrow().user_input_request.edit_ressource
+                            && state.borrow().selecting_previous_dir()
+                        {
+                            result = UserOperationResult::operation_on_prev();
+                        } else {
+                            result = request(&user_input);
+                        }
+
+                        if let Some(message) = result.message {
                             state
                                 .borrow_mut()
-                                .report_error(error_title, error_text.as_str());
-                            state.borrow_mut().mode = Mode::DISCARD
+                                .show_message(result.exit.get_header(), &message);
                         } else {
-                            state.borrow_mut().mode = Mode::SELECTING
+                            state.borrow_mut().mode = Mode::SELECTING;
                         }
                     }
                     Key::Char(character) => state.borrow_mut().user_input().push(character),
@@ -220,6 +157,7 @@ fn main() -> Result<(), io::Error> {
             }
         }
     }
+
     println!("{ToMainScreen}");
     state.borrow_mut().publish_reports();
     eprintln!("{}", state.borrow().get_bash_string(exited));
