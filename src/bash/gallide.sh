@@ -3,16 +3,32 @@ SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$HOME/.cargo/bin/gallide-bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
-found_conf=false
-directory_path=""
-explorer=cd
-config_path=""
 
-if test -f "$HOME/.config/gallide.conf"; then
-    config_path="$HOME/.config/gallide.conf";
-elif test -f "$HOME/.config/gallide/gallide.conf"; then
-    config_path="$HOME/.config/gallide/gallide.conf";
-fi
+
+
+display_help() {
+        echo "Usage: g [OPTION]..."
+        echo "Usage: g [OPTION]... [DIRECTORY]"
+        echo "  -h | --help                 displays this menu" 
+        echo "  --init                      aliases g to gallide, \"\$(. gallide init)\"' should be put in your .bashrc"
+        echo "  -c | --config <filepath>    use config located at <filepath>"
+        echo "  -z | --zoxide               use zoxide instead of cd"
+        echo "  -o | --open                 open the directory of the opened file"
+        echo "TUI controls : "
+        echo "  k             move up"
+        echo "  j             move down"
+        echo "  l             enter selected directory"
+        echo "  h             go back one directory"
+        echo "  ESC           close interface on current directory"
+        echo "  i             enable insert mode"
+        echo "  Enter         open selected object"
+        echo ""
+        echo "Using a configuration :"
+        echo "  configs located in $HOME/.config/gallide.conf or $HOME/.config/gallide/gallide.conf"
+        echo "  will be automaticly detected and used unless overriden with the --config option"
+        echo ""
+        echo "Report bugs to : dbdevbugs@gmail.com"
+}
 
 quit() {
     local code="${1:-0}"
@@ -23,6 +39,22 @@ quit() {
         exit $code
     fi
 }
+
+
+# execution config
+found_conf=false
+directory_path=""
+explorer=cd
+config_path=""
+open_file_dir=false
+
+if test -f "$HOME/.config/gallide.conf"; then
+    config_path="$HOME/.config/gallide.conf";
+elif test -f "$HOME/.config/gallide/gallide.conf"; then
+    config_path="$HOME/.config/gallide/gallide.conf";
+fi
+
+
 
 
 if test -x "$BIN"; then
@@ -47,27 +79,10 @@ do
         quit || return
     elif [ $arg = "-z" ] || [ $arg = "--zoxide" ]; then
         explorer=z
+    elif [ $arg = "-o" ] || [ $arg = "--open" ]; then
+        open_file_dir=true
     elif [ $arg = "-h" ] || [ $arg = "--help" ]; then
-        echo "Usage: g [OPTION]..."
-        echo "Usage: g [OPTION]... [DIRECTORY]"
-        echo "  -h | --help                displays this menu" 
-        echo "  --init                     aliases g to gallide, \"\$(. gallide init)\"' should be put in your .bashrc"
-        echo "  -c | --config <filepath>   set the config path"
-        echo "  -z                         use zoxide instead of cd"
-        echo "TUI controls : "
-        echo "  k             move up"
-        echo "  j             move down"
-        echo "  l             enter selected directory"
-        echo "  h             go back one directory"
-        echo "  ESC           close interface on current directory"
-        echo "  i             enable insert mode"
-        echo "  Enter         open selected object"
-        echo ""
-        echo "Using a configuration :"
-        echo "  configs located in $HOME/.config/gallide.conf or $HOME/.config/gallide/gallide.conf"
-        echo "  will be automaticly detected and used unless overriden with the --config option"
-        echo ""
-        echo "Report bugs to : dbdevbugs@gmail.com"
+        display_help
         quit || return
     elif [ $arg = "--config" ] || [ $arg = "-c" ]; then
         found_conf=true
@@ -122,6 +137,9 @@ fi
 if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
     \cd "$ITEM_PATH"
 elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
+    if [ $open_file_dir = "true" ]; then
+        cd "$(dirname "$ITEM_PATH")"
+    fi
     if [ -n "$EDITOR" ]; then
         "$EDITOR" "$ITEM_PATH"
     elif [ -n "$VISUAL" ]; then
