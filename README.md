@@ -42,7 +42,7 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
    ```
 2. **Add this to your .bashrc**
    ```
-   eval "$(gallide --init)" # This will enable the g alias
+   eval "$('$HOME'/.local/bin/gallide --init)" # This will enable the g alias
    ```
 **Prerequesites**
    - cargo
