@@ -32,6 +32,10 @@ pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor,
     })
 }
 
+fn get_color<'a>(data: &'a ParsedData, name: &'static str) -> Result<TColor, FileReadingError<'a>> {
+    return tui_color(data.as_color(name));
+}
+
 pub fn get_border_type(key: &str, data_map: &ParsedData) -> Option<BorderType> {
     let (_, raw_border_value) = data_map.as_raw(key).unwrap_or((0, String::from("plain")));
 
@@ -74,6 +78,7 @@ impl ParsedConstructable for DirectoryLineConfig {
 
 pub struct MainBoxConfig {
     pub border_config: BorderConfig,
+    pub writing_border_config: BorderConfig,
     pub text_color: Color,
     pub focus_text_color: Color,
     pub background_color: Option<Color>,
@@ -84,11 +89,16 @@ pub struct MainBoxConfig {
     pub file_symbol: String,
     pub file_symbol_color: Color,
     pub title: String,
+    pub write_mode_title: String,
 }
 impl Default for MainBoxConfig {
     fn default() -> Self {
         MainBoxConfig {
             border_config: BorderConfig {
+                border_color: Color::White,
+                border_type: Some(BorderType::Plain),
+            },
+            writing_border_config: BorderConfig {
                 border_color: Color::White,
                 border_type: Some(BorderType::Plain),
             },
@@ -102,6 +112,7 @@ impl Default for MainBoxConfig {
             file_symbol: String::new(),
             file_symbol_color: Color::White,
             title: String::from("Directories"),
+            write_mode_title: String::from(""),
         }
     }
 }
@@ -111,26 +122,33 @@ impl ParsedConstructable for MainBoxConfig {
         let default = Self::default();
         MainBoxConfig {
             border_config: BorderConfig {
-                border_color: tui_color(data.as_color("border color"))
+                border_color: get_color(data, "border color")
                     .unwrap_or(Self::default().border_config.border_color),
                 border_type: get_border_type("border type", data),
             },
-            text_color: tui_color(data.as_color("text color"))
+            writing_border_config: BorderConfig {
+                border_color: get_color(data, "write mode border color")
+                    .unwrap_or(Self::default().writing_border_config.border_color),
+                border_type: get_border_type("write mode border type", data),
+            },
+            text_color: get_color(data, "text color").unwrap_or(Self::default().text_color),
+            focus_text_color: get_color(data, "focus text color")
                 .unwrap_or(Self::default().text_color),
-            focus_text_color: tui_color(data.as_color("focus text color"))
-                .unwrap_or(Self::default().text_color),
-            background_color: tui_color(data.as_color("background color")).ok(),
+            background_color: get_color(data, "background color").ok(),
             directory_symbol: data
                 .as_text("directory symbol")
                 .unwrap_or(default.directory_symbol),
-            directory_symbol_color: tui_color(data.as_color("directory symbol color"))
+            directory_symbol_color: get_color(data, "directory symbol color")
                 .unwrap_or(default.directory_symbol_color),
             file_symbol: data.as_text("file symbol").unwrap_or(default.file_symbol),
-            file_symbol_color: tui_color(data.as_color("file symbol color"))
+            file_symbol_color: get_color(data, "file symbol color")
                 .unwrap_or(default.file_symbol_color),
-            focus_color: tui_color(data.as_color("focus color")).unwrap_or(default.focus_color),
+            focus_color: get_color(data, "focus color").unwrap_or(default.focus_color),
             focus_symbol: data.as_text("focus symbol").unwrap_or(default.focus_symbol),
             title: data.as_text("main title").unwrap_or(default.title),
+            write_mode_title: data
+                .as_text("write mode title")
+                .unwrap_or(default.write_mode_title),
         }
     }
 }
@@ -168,18 +186,17 @@ impl ParsedConstructable for SearchBarConfig {
         let default: Self = Self::default();
         Self {
             border_config: BorderConfig {
-                border_color: tui_color(data.as_color("searchbar border color"))
+                border_color: get_color(data, "searchbar border color")
                     .unwrap_or(default.border_config.border_color),
                 border_type: get_border_type("searchbar border type", data),
             },
             insert_mode_border_config: BorderConfig {
-                border_color: tui_color(data.as_color("insert searchbar color"))
+                border_color: get_color(data, "insert searchbar color")
                     .unwrap_or(default.insert_mode_border_config.border_color),
                 border_type: get_border_type("insert searchbar border type", data),
             },
-            text_color: tui_color(data.as_color("searchbar text color"))
-                .unwrap_or(default.text_color),
-            background_color: tui_color(data.as_color("searchbar background color")).ok(),
+            text_color: get_color(data, "searchbar text color").unwrap_or(default.text_color),
+            background_color: get_color(data, "searchbar background color").ok(),
             title: data.as_text("searchbar title").unwrap_or(default.title),
             enabled: data
                 .as_boolean("enable searchbar")
@@ -211,11 +228,10 @@ impl ParsedConstructable for TooltipConfig {
             display: data
                 .as_boolean("display tooltips")
                 .unwrap_or(default.display),
-            text_color: tui_color(data.as_color("tooltip text color"))
-                .unwrap_or(default.text_color),
-            keybind_color: tui_color(data.as_color("tooltip keybind color"))
+            text_color: get_color(data, "tooltip text color").unwrap_or(default.text_color),
+            keybind_color: get_color(data, "tooltip keybind color")
                 .unwrap_or(default.keybind_color),
-            highlight_color: tui_color(data.as_color("tooltip highlight color"))
+            highlight_color: get_color(data, "tooltip highlight color")
                 .unwrap_or(default.highlight_color),
         }
     }

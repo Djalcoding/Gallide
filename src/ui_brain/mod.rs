@@ -2,10 +2,10 @@ pub mod user_input;
 
 use crate::{
     config::Config,
-    read_ls::{Entry, Item, get_absolute_path_from_str, get_folder_contents},
+    read_ls::{EntryType, GallideEntry, get_absolute_path_from_str, get_folder_contents},
     reporter::Reporter,
 };
-use std::{cell::RefCell, collections::VecDeque, path::PathBuf, rc::Rc};
+use std::{collections::VecDeque, path::PathBuf};
 
 #[derive(PartialEq, Clone)]
 pub enum Mode {
@@ -16,8 +16,8 @@ pub enum Mode {
 }
 
 pub struct State {
-    selected_box: usize,
-    elements: VecDeque<Entry>,
+    cursor: usize,
+    elements: VecDeque<GallideEntry>,
     search_bar_text: String,
     current_dir: PathBuf,
     running: bool,
@@ -28,11 +28,10 @@ pub struct State {
     pub user_input_request: user_input::UserInputRequest,
 }
 
-pub type StateRcCell = Rc<RefCell<State>>;
 impl State {
     pub fn new(config: Config, reporter: Reporter) -> Self {
         let mut state = State {
-            selected_box: 0,
+            cursor: 0,
             elements: VecDeque::new(),
             search_bar_text: String::from(""),
             running: true,
@@ -49,38 +48,38 @@ impl State {
         };
         state.rebuild_directories();
         if state.elements.len() > 1 {
-            state.selected_box = 1;
+            state.cursor = 1;
         }
         state
     }
 
     pub fn get_selected_box(&self) -> usize {
-        self.selected_box
+        self.cursor
     }
-    pub fn read_selected_entry(&self) -> &Entry {
-        &self.elements[self.selected_box]
+    pub fn read_selected_entry(&self) -> &GallideEntry {
+        &self.elements[self.cursor]
     }
-    pub fn get_selected_entry(&mut self) -> &mut Entry {
-        &mut self.elements[self.selected_box]
+    pub fn get_selected_entry(&mut self) -> &mut GallideEntry {
+        &mut self.elements[self.cursor]
     }
 
     pub fn increment_selected_box(&mut self) {
-        self.selected_box = (self.selected_box + 1) % self.elements.len();
+        self.cursor = (self.cursor + 1) % self.elements.len();
     }
 
     pub fn decrement_selected_box(&mut self) {
-        if self.selected_box == 0 {
-            self.selected_box = self.elements.len() - 1;
+        if self.cursor == 0 {
+            self.cursor = self.elements.len() - 1;
         } else {
-            self.selected_box -= 1;
+            self.cursor -= 1;
         }
     }
 
     pub fn move_selected_box_to_start(&mut self) {
         if self.elements.len() == 1 {
-            self.selected_box = 0;
+            self.cursor = 0;
         } else {
-            self.selected_box = 1;
+            self.cursor = 1;
         }
     }
 
@@ -98,7 +97,7 @@ impl State {
         lossy
     }
 
-    fn get_current_dir_folder_contents(&mut self) -> Vec<Entry> {
+    fn get_current_dir_folder_contents(&mut self) -> Vec<GallideEntry> {
         let contents = get_folder_contents(self.get_current_directory_str().as_str());
         match contents {
             Ok(entries) => entries,
@@ -112,7 +111,7 @@ impl State {
     }
 
     pub fn trim_directories(&mut self) {
-        let mut new_list: VecDeque<Entry> = VecDeque::new();
+        let mut new_list: VecDeque<GallideEntry> = VecDeque::new();
         let mut curated_search_bar_text = String::from(self.search_bar_text.trim());
         if !self.config.case_sensitive {
             curated_search_bar_text = curated_search_bar_text.to_lowercase();
@@ -122,7 +121,7 @@ impl State {
             if !self.config.case_sensitive {
                 curated_name = curated_name.to_lowercase();
             }
-            if let Item::SpecialSign = element.entry_type {
+            if let EntryType::SpecialSign = element.entry_type {
                 new_list.push_back(element);
                 continue;
             } else if curated_name.starts_with(&curated_search_bar_text) {
@@ -133,7 +132,7 @@ impl State {
         self.elements = new_list;
     }
 
-    pub fn add_top_priority_entry(&mut self, entry: Entry) {
+    pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {
         let previous_directory = self.elements.pop_front().unwrap();
         self.elements.push_front(entry);
         self.elements.push_front(previous_directory);
@@ -151,19 +150,19 @@ impl State {
     pub fn backspace(&mut self) {
         self.search_bar_text.pop();
         self.trim_directories();
-        self.selected_box = self.elements.len() - 1;
+        self.cursor = self.elements.len() - 1;
     }
 
     pub fn add_character(&mut self, character: char) {
         self.search_bar_text.push(character);
         self.trim_directories();
-        self.selected_box = self.elements.len() - 1;
+        self.cursor = self.elements.len() - 1;
     }
 
     pub fn clear_search_bar(&mut self) {
         self.search_bar_text = String::new();
         self.trim_directories();
-        self.selected_box = self.elements.len() - 1;
+        self.cursor = self.elements.len() - 1;
     }
 
     pub fn stop(&mut self) {
@@ -219,7 +218,7 @@ impl State {
         &self.current_dir
     }
 
-    pub fn elements(&self) -> &VecDeque<Entry> {
+    pub fn elements(&self) -> &VecDeque<GallideEntry> {
         &self.elements
     }
 
@@ -228,7 +227,7 @@ impl State {
     }
 
     pub fn is_selecting_directory(&self) -> bool {
-        if let Item::Folder = self.elements[self.selected_box].entry_type {
+        if let EntryType::Folder = self.elements[self.cursor].entry_type {
             return true;
         }
         false
@@ -270,7 +269,9 @@ impl State {
     }
 
     pub fn remove_selected(&mut self) {
-        self.elements.remove(self.get_selected_box());
+        let index = self.get_selected_box();
+        self.elements.remove(index);
+        self.cursor = std::cmp::min(0, index - 1);
     }
     pub fn show_message(&mut self, title: &str, info: &str) {
         self.user_input = String::from(info);

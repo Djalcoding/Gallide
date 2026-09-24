@@ -10,6 +10,15 @@ if [[ "$1" == "--uninstall" ]]; then
     exit 0;
 fi
 
+if [ ! -d "$HOME/.local" ]; then
+    echo "making $HOME/.local..."
+    mkdir "$HOME/.local" 
+fi
+if [ ! -d "$HOME/.local/bin" ]; then
+    echo "making $HOME/.local/bin..."
+    mkdir "$HOME/.local/bin"
+fi
+
 cargo install gallide-bin || { echo "Failed to fetch gallide binary from crates.io, exiting..."; exit; }
 if ! test -f "$INSTALLATION_FILE"; then
     touch "$INSTALLATION_FILE" || { echo "Failed to create gallide.sh in bin, exiting..."; exit; }
@@ -38,4 +47,4 @@ else
 fi
 
 echo "Installation complete !";
-echo "now, you probably want to add 'eval \"\$(. gallide init)\"' to your .bashrc"
+echo "now, you probably want to add 'eval \"\$(. '$HOME/.local/bin/gallide' --init)\"' to your .bashrc"

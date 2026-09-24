@@ -7,21 +7,21 @@ use std::{
 
 
 #[derive(std::cmp::PartialEq)]
-pub enum Item {
+pub enum EntryType {
     File,
     Folder,
     SpecialSign,
 }
 
-pub struct Entry {
+pub struct GallideEntry {
     path: PathBuf,
     name: String,
-    pub entry_type: Item,
+    pub entry_type: EntryType,
 }
 
-impl Entry {
-    pub fn new(path: PathBuf, name: String, entry_type: Item) -> Self {
-        Entry {
+impl GallideEntry {
+    pub fn new(path: PathBuf, name: String, entry_type: EntryType) -> Self {
+        GallideEntry {
             path,
             name,
             entry_type,
@@ -59,17 +59,17 @@ fn get_files(current_folder: &str) -> Result<String, Error> {
     Ok(String::from_utf8(output.to_vec()).expect("unknown file"))
 }
 
-pub fn get_folder_contents(current_folder: &str) -> Result<Vec<Entry>, Error> {
+pub fn get_folder_contents(current_folder: &str) -> Result<Vec<GallideEntry>, Error> {
     let folder_string: String = get_folders(current_folder)?;
     let file_string: String = get_files(current_folder)?;
-    let mut entries: Vec<Entry> = Vec::new();
+    let mut entries: Vec<GallideEntry> = Vec::new();
 
     let mut previous_folder: PathBuf = Path::new(current_folder).to_path_buf();
     previous_folder.pop();
-    entries.push(Entry::new(
+    entries.push(GallideEntry::new(
         previous_folder,
         String::from(".."),
-        Item::SpecialSign,
+        EntryType::SpecialSign,
     ));
     for string in folder_string.trim().split("\n") {
         let possible_path = Path::new(&String::from(string)).canonicalize();
@@ -78,7 +78,7 @@ pub fn get_folder_contents(current_folder: &str) -> Result<Vec<Entry>, Error> {
         }
         let path = possible_path.unwrap().to_path_buf();
         let name = String::from(path.file_name().unwrap().to_string_lossy());
-        entries.push(Entry::new(path, name, Item::Folder))
+        entries.push(GallideEntry::new(path, name, EntryType::Folder))
     }
 
     for string in file_string.trim().split("\n") {
@@ -88,7 +88,7 @@ pub fn get_folder_contents(current_folder: &str) -> Result<Vec<Entry>, Error> {
         }
         let path = possible_path.unwrap().to_path_buf();
         let name = String::from(path.file_name().unwrap().to_str().unwrap());
-        entries.push(Entry::new(path, name, Item::File));
+        entries.push(GallideEntry::new(path, name, EntryType::File));
     }
     Ok(entries)
 }

@@ -1,10 +1,8 @@
 use core::time;
 use std::{
-    cell::RefCell,
     env,
     io::{self, stdin},
     path::Path,
-    rc::Rc,
     sync::mpsc,
     thread,
 };
@@ -45,7 +43,7 @@ fn main() -> Result<(), io::Error> {
         Config::default()
     };
     let enable_searchbar = config.search_bar.enabled;
-    let state = Rc::new(RefCell::new(State::new(config, reporter)));
+    let mut state = State::new(config, reporter);
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
@@ -58,108 +56,95 @@ fn main() -> Result<(), io::Error> {
     });
 
     let mut exited = false;
-    while state.borrow().is_running() {
+    while state.is_running() {
         let _ = terminal.draw(|f| {
-            let borrowed = state.borrow();
-            ui::build_ui(f, &borrowed, borrowed.get_config());
+            ui::build_ui(f, &state, state.get_config());
         });
         if let Ok(key) = rx.recv_timeout(time::Duration::from_millis(50)) {
-            let mode = state.borrow().mode.clone();
+            let mode = state.mode.clone();
             match mode {
                 Mode::INSERT => match key {
-                    Key::Esc | Key::Char('\n') => state.borrow_mut().switch_mode(),
-                    Key::Backspace => state.borrow_mut().backspace(),
-                    Key::Char(character) => state.borrow_mut().add_character(character),
-                    Key::Up => state.borrow_mut().decrement_selected_box(),
-                    Key::Down => state.borrow_mut().increment_selected_box(),
+                    Key::Esc | Key::Char('\n') => state.switch_mode(),
+                    Key::Backspace => state.backspace(),
+                    Key::Char(character) => state.add_character(character),
+                    Key::Up => state.decrement_selected_box(),
+                    Key::Down => state.increment_selected_box(),
                     _ => {}
                 },
                 Mode::SELECTING => match key {
-                    Key::Up | Key::Char('k') => state.borrow_mut().decrement_selected_box(),
-                    Key::Down | Key::Char('j') => state.borrow_mut().increment_selected_box(),
+                    Key::Up | Key::Char('k') => state.decrement_selected_box(),
+                    Key::Down | Key::Char('j') => state.increment_selected_box(),
 
                     Key::Esc | Key::Char('q') => {
-                        state.borrow_mut().stop();
+                        state.stop();
                         exited = true;
                     }
                     Key::Right | Key::Char('l') => {
-                        if state.borrow().is_selecting_directory() {
-                            state.borrow_mut().open_selected_directory();
-                            state.borrow_mut().rebuild_directories();
+                        if state.is_selecting_directory() {
+                            state.open_selected_directory();
+                            state.rebuild_directories();
                         } else {
-                            state.borrow_mut().stop();
+                            state.stop();
                         }
                     }
                     Key::Left | Key::Char('h') => {
-                        let mut mut_borrow = state.borrow_mut();
-                        mut_borrow.go_back_one_directory();
-                        mut_borrow.rebuild_directories();
+                        state.go_back_one_directory();
+                        state.rebuild_directories();
                     }
-                    Key::Char('\n') => state.borrow_mut().stop(),
+                    Key::Char('\n') => state.stop(),
                     Key::Char('i') => {
                         if enable_searchbar {
-                            state.borrow_mut().switch_mode()
+                            state.switch_mode()
                         }
                     }
-                    Key::Char('c') => state.borrow_mut().clear_search_bar(),
+                    Key::Char('c') => state.clear_search_bar(),
                     Key::Char('a') => {
-                        state
-                            .borrow_mut()
-                            .ask_input(create_ressource_request(Rc::clone(&state)));
+                        state.ask_input(create_ressource_request());
                     }
                     Key::Char('d') => {
-                        let path = state.borrow().read_selected_entry().path().clone();
-                        state
-                            .borrow_mut()
-                            .ask_input(delete_ressource_request(path, Rc::clone(&state)));
+                        state.ask_input(delete_ressource_request(state.read_selected_entry()));
                     }
                     Key::Char('r') => {
-                        let path = state.borrow().read_selected_entry().path().clone();
-                        state
-                            .borrow_mut()
-                            .ask_input(rename_ressource_request(path, Rc::clone(&state)));
+                        state.ask_input(rename_ressource_request(state.read_selected_entry()));
                     }
                     _ => {}
                 },
                 #[allow(clippy::needless_late_init)]
                 Mode::WRITING => match key {
-                    Key::Esc => state.borrow_mut().mode = Mode::SELECTING,
+                    Key::Esc => state.mode = Mode::SELECTING,
                     Key::Char('\n') => {
-                        let user_input = state.borrow().read_user_input().clone();
-                        let request = state.borrow_mut().user_input_request.get_closure();
+                        let user_input = state.read_user_input().clone();
+                        let request = state.user_input_request.get_closure();
 
                         let result: UserOperationResult;
-                        if state.borrow().user_input_request.edit_ressource
-                            && state.borrow().selecting_previous_dir()
+                        if state.user_input_request.edit_ressource && state.selecting_previous_dir()
                         {
                             result = UserOperationResult::operation_on_prev();
                         } else {
-                            result = request(&user_input);
+                            result = request(&mut state, &user_input);
                         }
 
                         if let Some(message) = result.message {
-                            state
-                                .borrow_mut()
-                                .show_message(result.exit.get_header(), &message);
+                            state.show_message(result.exit.get_header(), &message);
                         } else {
-                            state.borrow_mut().mode = Mode::SELECTING;
+                            state.mode = Mode::SELECTING;
                         }
                     }
-                    Key::Char(character) => state.borrow_mut().user_input().push(character),
+                    Key::Char(character) => state.user_input().push(character),
                     Key::Backspace => {
-                        state.borrow_mut().user_input().pop();
+                        state.user_input().pop();
                     }
                     _ => {}
                 },
                 Mode::DISCARD => {
-                    state.borrow_mut().mode = Mode::SELECTING;
+                    state.mode = Mode::SELECTING;
                 }
             }
         }
     }
 
     println!("{ToMainScreen}");
-    state.borrow_mut().publish_reports();
-    eprintln!("{}", state.borrow().get_bash_string(exited));
+    state.publish_reports();
+    eprintln!("{}", state.get_bash_string(exited));
     Ok(())
 }

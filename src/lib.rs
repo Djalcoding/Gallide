@@ -7,6 +7,7 @@ pub mod reporter;
 pub mod ui_brain;
 
 pub mod ui {
+
     use tui::{
         Frame,
         backend::Backend,
@@ -18,7 +19,7 @@ pub mod ui {
 
     use crate::{
         config::{Config, MainBoxConfig, SearchBarConfig, TooltipConfig},
-        read_ls::{Entry, Item},
+        read_ls::{EntryType, GallideEntry},
         ui_brain::State,
     };
 
@@ -42,17 +43,17 @@ pub mod ui {
 
     fn build_entries<'a, I>(directories: I, config: &'a MainBoxConfig) -> Vec<ListItem<'a>>
     where
-        I: Iterator<Item = &'a Entry>,
+        I: Iterator<Item = &'a GallideEntry>,
     {
         let mut entries = Vec::new();
         directories.for_each(|directory| {
             let symbol: Span;
-            if let Item::File = directory.entry_type {
+            if let EntryType::File = directory.entry_type {
                 symbol = Span::styled(
                     &config.file_symbol,
                     Style::default().fg(config.file_symbol_color),
                 );
-            } else if let Item::Folder = directory.entry_type {
+            } else if let EntryType::Folder = directory.entry_type {
                 symbol = Span::styled(
                     &config.directory_symbol,
                     Style::default().fg(config.directory_symbol_color),
@@ -69,23 +70,26 @@ pub mod ui {
         entries
     }
 
-    fn build_text_input<'a>(title: &'a str, state: &'a State, config: &'a Config) -> Paragraph<'a> {
-        let mut style =
-            Style::default().fg(config.search_bar.insert_mode_border_config.border_color); // TODO : add config for main box
-        if let Some(background) = config.main_box.background_color {
+    fn build_text_input<'a>(
+        title: &'a str,
+        state: &'a State,
+        config: &'a MainBoxConfig,
+    ) -> Paragraph<'a> {
+        let mut style = Style::default().fg(config.writing_border_config.border_color); // TODO : add config for main box
+        if let Some(background) = config.background_color {
             style = style.bg(background)
         }
         Paragraph::new(state.read_user_input().as_str())
             .style(Style::default().fg(Color::White)) // TODO : add config for text color
             .block(optionally_add_borders(
                 Block::default().title(title).style(style),
-                &config.main_box.border_config.border_type,
+                &config.writing_border_config.border_type,
             ))
     }
 
     fn build_directory_list<'a, I>(directories: I, config: &'a MainBoxConfig) -> List<'a>
     where
-        I: Iterator<Item = &'a Entry>,
+        I: Iterator<Item = &'a GallideEntry>,
     {
         let items = build_entries(directories, config);
         let mut style = Style::default().fg(config.border_config.border_color);
@@ -152,6 +156,12 @@ pub mod ui {
             Span::styled(": ↵/l/→  ", keybind_style),
             Span::styled("Parent dir", header_style),
             Span::styled(": h/←  ", keybind_style),
+            Span::styled("Create file", header_style),
+            Span::styled(": a  ", keybind_style),
+            Span::styled("Remove", header_style),
+            Span::styled(": d  ", keybind_style),
+            Span::styled("Rename", header_style),
+            Span::styled(": r  ", keybind_style),
         ]))
         .style(optional_bg_style(background_color))
     }
@@ -200,17 +210,7 @@ pub mod ui {
         }
 
         if state.is_in_write_mode() {
-            if config.directory_line.display {
-                f.render_widget(
-                    build_text_input(" Input ", state, config),
-                    chunks.next().unwrap(),
-                );
-            } else {
-                f.render_widget(
-                    build_text_input(&current_dir_cow, state, config),
-                    chunks.next().unwrap(),
-                );
-            }
+            f.render_widget(build_text_input(&config.main_box.write_mode_title, state, &config.main_box), chunks.next().unwrap());
         } else {
             f.render_stateful_widget(
                 build_directory_list(state.elements().iter(), &config.main_box),

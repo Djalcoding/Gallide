@@ -1,3 +1,5 @@
+use crate::ui_brain::State;
+
 #[derive(std::cmp::PartialEq)]
 pub enum ExitType {
     Sucess,
@@ -34,7 +36,7 @@ impl UserOperationResult {
 }
 
 // returns how long to wait before reseting the state machine to selecting
-type ClosureT = Box<dyn FnOnce(&str) -> UserOperationResult>;
+type ClosureT = Box<dyn FnOnce(&mut State, &str) -> UserOperationResult>;
 pub struct UserInputRequest {
     pub title: String,
     pub on_enter: Option<ClosureT>,
