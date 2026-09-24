@@ -49,7 +49,7 @@ pub fn create_ressource(name: &str, path: &Path) -> std::io::Result<GallideEntry
 pub fn rename_ressource_request(entry: &GallideEntry) -> UserInputRequest {
     let path = entry.path().clone();
     let title = format!(
-        " Insert new name for {} ? ",
+        "Insert new name for {} ? ",
         path.file_name().unwrap().to_string_lossy()
     );
     UserInputRequest::new(
@@ -86,7 +86,7 @@ pub fn delete_ressource_request(entry: &GallideEntry) -> UserInputRequest {
     let path = entry.path().clone();
     let is_file: bool = entry.entry_type == EntryType::File;
     let title = format!(
-        " Are you sure you want to delete {}? {} (y/n)",
+        "Are you sure you want to delete {}? {} (y/n)",
         entry.path().file_name().unwrap().to_string_lossy(),
         if is_file {
             ""
@@ -126,7 +126,7 @@ pub fn delete_ressource_request(entry: &GallideEntry) -> UserInputRequest {
 
 pub fn create_ressource_request() -> UserInputRequest {
     UserInputRequest::new(
-        String::from(" Insert new file name "),
+        String::from("Insert new ressource name"),
         false,
         Box::new(move |state, name| {
             let mut directory = state.get_current_directory().clone();
@@ -137,7 +137,14 @@ pub fn create_ressource_request() -> UserInputRequest {
                     ExitType::Error
                 }
                 Ok(entry) => {
-                    message = Some(format!("'{name}' was properly created !"));
+                    message = Some(format!(
+                        "new {} '{name}' was properly created !",
+                        if entry.entry_type == EntryType::File {
+                            "file"
+                        } else {
+                            "directory"
+                        }
+                    ));
                     directory.push(name);
                     state.add_top_priority_entry(entry);
                     ExitType::Sucess
