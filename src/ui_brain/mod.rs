@@ -30,10 +30,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(config: Config, reporter: Reporter, start_depth: u8) -> Self {
+    pub fn new(config: Config, reporter: Reporter) -> Self {
         let mut state = State {
             cursor: 0,
-            depth: start_depth,
+            depth: config.main_box.default_depth,
             elements: VecDeque::new(),
             search_bar_text: String::from(""),
             running: true,

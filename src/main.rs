@@ -43,7 +43,7 @@ fn main() -> Result<(), io::Error> {
         Config::default()
     };
     let enable_searchbar = config.search_bar.enabled;
-    let mut state = State::new(config, reporter, 1);
+    let mut state = State::new(config, reporter);
     println!("{ToAlternateScreen}");
 
     let (tx, rx) = mpsc::channel();
