@@ -5,8 +5,11 @@ DIRECTORY_REP="D'"
 FILE_REP="F'"
 
 
-
+display_version() {
+    echo "gallide 1.5"
+}
 display_help() {
+        display_version
         echo "Usage: g [OPTION]..."
         echo "Usage: g [OPTION]... [DIRECTORY]"
         echo "  -h | --help                 displays this menu" 
@@ -14,15 +17,6 @@ display_help() {
         echo "  -c | --config <filepath>    use config located at <filepath>"
         echo "  -z | --zoxide               use zoxide instead of cd"
         echo "  -o | --open                 open the directory of the opened file"
-        echo "TUI controls : "
-        echo "  k             move up"
-        echo "  j             move down"
-        echo "  l             enter selected directory"
-        echo "  h             go back one directory"
-        echo "  ESC           close interface on current directory"
-        echo "  i             enable insert mode"
-        echo "  Enter         open selected object"
-        echo ""
         echo "Using a configuration :"
         echo "  configs located in $HOME/.config/gallide.conf or $HOME/.config/gallide/gallide.conf"
         echo "  will be automaticly detected and used unless overriden with the --config option"
@@ -40,8 +34,6 @@ quit() {
     fi
 }
 
-
-# execution config
 found_conf=false
 directory_path=""
 explorer=cd
@@ -53,9 +45,6 @@ if test -f "$HOME/.config/gallide.conf"; then
 elif test -f "$HOME/.config/gallide/gallide.conf"; then
     config_path="$HOME/.config/gallide/gallide.conf";
 fi
-
-
-
 
 if test -x "$BIN"; then
     :
@@ -81,6 +70,9 @@ do
         explorer=z
     elif [ $arg = "-o" ] || [ $arg = "--open" ]; then
         open_file_dir=true
+    elif [ $arg = "-v" ] || [ $arg = "--version" ]; then
+        display_version
+        quit || return
     elif [ $arg = "-h" ] || [ $arg = "--help" ]; then
         display_help
         quit || return
