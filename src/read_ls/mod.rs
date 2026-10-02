@@ -1,12 +1,15 @@
 use std::{
+    cmp::Ordering::{Greater, Less},
+    ffi::OsStr,
     fs,
     io::Error,
     path::{Path, PathBuf},
     process::Command,
 };
 
+use crate::read_ls::EntryType::{File, Folder};
 
-#[derive(std::cmp::PartialEq)]
+#[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
     File,
     Folder,
@@ -17,14 +20,16 @@ pub struct GallideEntry {
     path: PathBuf,
     name: String,
     pub entry_type: EntryType,
+    size: Option<u64>,
 }
 
 impl GallideEntry {
-    pub fn new(path: PathBuf, name: String, entry_type: EntryType) -> Self {
+    pub fn new(path: PathBuf, name: String, entry_type: EntryType, size: Option<u64>) -> Self {
         GallideEntry {
             path,
             name,
             entry_type,
+            size,
         }
     }
     pub fn set_type(&mut self) {}
@@ -34,62 +39,120 @@ impl GallideEntry {
     pub fn name(&self) -> &String {
         &self.name
     }
-    pub fn set_name(&mut self, new_name:&str) {
+    pub fn size(&self) -> Option<u64> {
+        self.size
+    }
+    pub fn set_name(&mut self, new_name: &str) {
         self.name = String::from(new_name);
         self.path.pop();
         self.path.push(new_name);
     }
 }
 
-fn get_folders(current_folder: &str) -> Result<String, Error> {
+fn get_folders(current_folder: &Path) -> Result<String, Error> {
     let mut ls_command = Command::new("sh");
-    ls_command
-        .arg("-c")
-        .arg(format!("ls -a -d \"{current_folder}\"/*/"));
+    ls_command.arg("-c").arg(format!(
+        "find \"{}\" -type d -maxdepth 1 -printf \"%p\\n\"",
+        current_folder.to_string_lossy()
+    ));
     let output = &ls_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown folder"))
 }
 
-fn get_files(current_folder: &str) -> Result<String, Error> {
+fn get_files(current_folder: &Path) -> Result<String, Error> {
     let mut find_command = Command::new("sh");
-    find_command
-        .arg("-c")
-        .arg(format!("find \"{current_folder}\" -maxdepth 1 -type f"));
+    find_command.arg("-c").arg(format!(
+        "find \"{}\" -type f -maxdepth 1 -printf \"%p__FILE_SIZE=%k\\n\"",
+        current_folder.to_string_lossy()
+    ));
     let output = &find_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown file"))
 }
 
-pub fn get_folder_contents(current_folder: &str) -> Result<Vec<GallideEntry>, Error> {
-    let folder_string: String = get_folders(current_folder)?;
-    let file_string: String = get_files(current_folder)?;
+fn cmp_entries(a: &GallideEntry, b: &GallideEntry) -> std::cmp::Ordering {
+    if a.entry_type == EntryType::SpecialSign || (a.entry_type == Folder && b.entry_type == File) {
+        return Less;
+    } else if b.entry_type == EntryType::SpecialSign
+        || (a.entry_type == File && b.entry_type == Folder)
+    {
+        return Greater;
+    }
+    if a.name().starts_with('.') {
+        return Greater;
+    } else if b.name().starts_with('.') {
+        return Less;
+    }
+    a.name().to_lowercase().cmp(&b.name().to_lowercase())
+}
+
+fn process_stdout(
+    has_size: bool,
+    entries: &mut Vec<GallideEntry>,
+    split: String,
+    current_path: &Path,
+    t: EntryType,
+) {
+    for string in split.trim().split('\n') {
+        if string.is_empty() {
+            continue;
+        }
+        let first_part;
+        let mut size = None;
+        if has_size {
+            let parts = string.split("__FILE_SIZE=").collect::<Vec<&str>>();
+            first_part = parts[0];
+            size = parts[1].parse().ok()
+        } else {
+            first_part = string;
+        }
+        let possible_path = Path::new(&String::from(first_part)).canonicalize();
+        if possible_path.is_err() {
+            continue;
+        }
+        let path = possible_path.unwrap().to_path_buf();
+        if path == current_path {
+            continue;
+        }
+        let filename = path.file_name();
+        if filename.is_none() {
+            continue;
+        }
+        let name = String::from(
+            path.file_name()
+                .unwrap_or(OsStr::new("/"))
+                .to_string_lossy(),
+        );
+        entries.push(GallideEntry::new(path, name, t, size))
+    }
+}
+
+pub fn get_folder_contents(current_folder: &Path) -> Result<Vec<GallideEntry>, Error> {
     let mut entries: Vec<GallideEntry> = Vec::new();
 
-    let mut previous_folder: PathBuf = Path::new(current_folder).to_path_buf();
+    let mut previous_folder: PathBuf = current_folder.to_path_buf();
     previous_folder.pop();
     entries.push(GallideEntry::new(
         previous_folder,
         String::from(".."),
         EntryType::SpecialSign,
+        None,
     ));
-    for string in folder_string.trim().split("\n") {
-        let possible_path = Path::new(&String::from(string)).canonicalize();
-        if possible_path.is_err() {
-            continue;
-        }
-        let path = possible_path.unwrap().to_path_buf();
-        let name = String::from(path.file_name().unwrap().to_string_lossy());
-        entries.push(GallideEntry::new(path, name, EntryType::Folder))
-    }
+    process_stdout(
+        false,
+        &mut entries,
+        get_folders(current_folder)?,
+        current_folder,
+        Folder,
+    );
+    process_stdout(
+        true,
+        &mut entries,
+        get_files(current_folder)?,
+        current_folder,
+        File,
+    );
 
-    for string in file_string.trim().split("\n") {
-        let possible_path = Path::new(&String::from(string)).canonicalize();
-        if possible_path.is_err() {
-            continue;
-        }
-        let path = possible_path.unwrap().to_path_buf();
-        let name = String::from(path.file_name().unwrap().to_str().unwrap());
-        entries.push(GallideEntry::new(path, name, EntryType::File));
-    }
+    entries.sort_by(cmp_entries);
     Ok(entries)
 }
 

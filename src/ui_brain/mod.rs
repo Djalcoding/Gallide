@@ -88,17 +88,8 @@ impl State {
         self.trim_directories();
     }
 
-    fn get_current_directory_str(&mut self) -> String {
-        let lossy = self.current_dir.to_string_lossy().to_string();
-        if self.current_dir.to_str().is_none() {
-            self.reporter
-                .push(format!("Invalid UTF-8 : {lossy}").as_str());
-        }
-        lossy
-    }
-
     fn get_current_dir_folder_contents(&mut self) -> Vec<GallideEntry> {
-        let contents = get_folder_contents(self.get_current_directory_str().as_str());
+        let contents = get_folder_contents(self.get_current_directory());
         match contents {
             Ok(entries) => entries,
             Err(e) => {
@@ -222,8 +213,8 @@ impl State {
         &self.elements
     }
 
-    pub fn current_searchbar_text(&self) -> String {
-        self.search_bar_text.clone()
+    pub fn current_searchbar_text(&self) -> &String {
+        &self.search_bar_text
     }
 
     pub fn is_selecting_directory(&self) -> bool {

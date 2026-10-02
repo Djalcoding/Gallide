@@ -33,7 +33,7 @@ pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor,
 }
 
 fn get_color<'a>(data: &'a ParsedData, name: &'static str) -> Result<TColor, FileReadingError<'a>> {
-    return tui_color(data.as_color(name));
+    tui_color(data.as_color(name))
 }
 
 pub fn get_border_type(key: &str, data_map: &ParsedData) -> Option<BorderType> {
@@ -90,6 +90,7 @@ pub struct MainBoxConfig {
     pub file_symbol_color: Color,
     pub title: String,
     pub write_mode_title: String,
+    pub display_file_size: bool,
 }
 impl Default for MainBoxConfig {
     fn default() -> Self {
@@ -113,6 +114,7 @@ impl Default for MainBoxConfig {
             file_symbol_color: Color::White,
             title: String::from("Directories"),
             write_mode_title: String::from(""),
+            display_file_size: true,
         }
     }
 }
@@ -149,6 +151,9 @@ impl ParsedConstructable for MainBoxConfig {
             write_mode_title: data
                 .as_text("write mode title")
                 .unwrap_or(default.write_mode_title),
+            display_file_size: data
+                .as_boolean("display file size")
+                .unwrap_or(default.display_file_size),
         }
     }
 }

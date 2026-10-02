@@ -11,7 +11,7 @@ pub mod ui {
     use tui::{
         Frame,
         backend::Backend,
-        layout::{Constraint, Layout},
+        layout::{Constraint, Layout, Rect},
         style::{Color, Modifier, Style},
         text::{Span, Spans},
         widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
@@ -41,7 +41,11 @@ pub mod ui {
         }
     }
 
-    fn build_entries<'a, I>(directories: I, config: &'a MainBoxConfig) -> Vec<ListItem<'a>>
+    fn build_entries<'a, I>(
+        directories: I,
+        config: &'a MainBoxConfig,
+        width: u16,
+    ) -> Vec<ListItem<'a>>
     where
         I: Iterator<Item = &'a GallideEntry>,
     {
@@ -61,11 +65,19 @@ pub mod ui {
             } else {
                 symbol = Span::raw("");
             }
-
-            entries.push(ListItem::new(Spans::from(vec![
+            let mut spans = vec![
                 symbol,
                 Span::styled(directory.name(), Style::default().fg(config.text_color)),
-            ])));
+            ];
+            if config.display_file_size
+                && let Some(size) = directory.size()
+            {
+                spans.push(Span::raw(
+                    " ".repeat(width as usize - spans[0].width() - spans[1].width() - 10),
+                ));
+                spans.push(Span::raw(format!("{} KB", size)));
+            }
+            entries.push(ListItem::new(Spans::from(spans)));
         });
         entries
     }
@@ -75,7 +87,7 @@ pub mod ui {
         state: &'a State,
         config: &'a MainBoxConfig,
     ) -> Paragraph<'a> {
-        let mut style = Style::default().fg(config.writing_border_config.border_color); // TODO : add config for main box
+        let mut style = Style::default().fg(config.writing_border_config.border_color);
         if let Some(background) = config.background_color {
             style = style.bg(background)
         }
@@ -87,11 +99,15 @@ pub mod ui {
             ))
     }
 
-    fn build_directory_list<'a, I>(directories: I, config: &'a MainBoxConfig) -> List<'a>
+    fn build_directory_list<'a, I>(
+        directories: I,
+        config: &'a MainBoxConfig,
+        area: &Rect,
+    ) -> List<'a>
     where
         I: Iterator<Item = &'a GallideEntry>,
     {
-        let items = build_entries(directories, config);
+        let items = build_entries(directories, config, area.width);
         let mut style = Style::default().fg(config.border_config.border_color);
         if let Some(background) = config.background_color {
             style = style.bg(background)
@@ -101,7 +117,6 @@ pub mod ui {
         } else {
             Block::default().title(config.title.clone())
         };
-
         List::new(items)
             .block(optionally_add_borders(
                 block,
@@ -146,17 +161,17 @@ pub mod ui {
             .add_modifier(Modifier::ITALIC);
 
         Paragraph::new(Spans::from(vec![
-            Span::styled("Movement", header_style),
+            Span::styled("Move", header_style),
             Span::styled(": jk/↓↑  ", keybind_style),
             Span::styled("Exit", header_style),
             Span::styled(": q/ESC  ", keybind_style),
-            Span::styled("Insert Mode", header_style),
+            Span::styled("Search", header_style),
             Span::styled(": i  ", keybind_style),
             Span::styled("Select", header_style),
-            Span::styled(": ↵/l/→  ", keybind_style),
-            Span::styled("Parent dir", header_style),
+            Span::styled(": ENTER↵/l/→  ", keybind_style),
+            Span::styled("Go back", header_style),
             Span::styled(": h/←  ", keybind_style),
-            Span::styled("Create file", header_style),
+            Span::styled("Create", header_style),
             Span::styled(": a  ", keybind_style),
             Span::styled("Remove", header_style),
             Span::styled(": d  ", keybind_style),
@@ -210,11 +225,15 @@ pub mod ui {
         }
 
         if state.is_in_write_mode() {
-            f.render_widget(build_text_input(&config.main_box.write_mode_title, state, &config.main_box), chunks.next().unwrap());
-        } else {
-            f.render_stateful_widget(
-                build_directory_list(state.elements().iter(), &config.main_box),
+            f.render_widget(
+                build_text_input(&config.main_box.write_mode_title, state, &config.main_box),
                 chunks.next().unwrap(),
+            );
+        } else {
+            let chunk = chunks.next().unwrap();
+            f.render_stateful_widget(
+                build_directory_list(state.elements().iter(), &config.main_box, &chunk),
+                chunk,
                 &mut list_state,
             );
         }

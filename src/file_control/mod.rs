@@ -10,12 +10,16 @@ use crate::{
 };
 
 // TODO : move this to Entry
-
 pub fn create_ressource(name: &str, path: &Path) -> std::io::Result<GallideEntry> {
     let mut buffer: PathBuf = path.to_path_buf();
     if !name.chars().any(|c| c.is_ascii_alphanumeric()) {
         return Err(Error::from(ErrorKind::InvalidFilename));
     }
+    buffer.push(name);
+    if fs::exists(&buffer)? {
+        return Err(Error::from(ErrorKind::AlreadyExists));
+    }
+    buffer.pop();
     let parts: Vec<&str> = name.split('/').collect::<Vec<&str>>();
     let mut is_file: bool = true;
     for (i, part) in parts.iter().enumerate() {
@@ -43,6 +47,7 @@ pub fn create_ressource(name: &str, path: &Path) -> std::io::Result<GallideEntry
         } else {
             crate::read_ls::EntryType::Folder
         },
+        None,
     ))
 }
 
