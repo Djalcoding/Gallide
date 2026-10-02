@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering::{Greater, Less},
-    ffi::OsStr,
     fs,
     io::Error,
     path::{Path, PathBuf},
@@ -49,20 +48,20 @@ impl GallideEntry {
     }
 }
 
-fn get_folders(current_folder: &Path) -> Result<String, Error> {
+fn get_folders(current_folder: &Path, depth: u8) -> Result<String, Error> {
     let mut ls_command = Command::new("sh");
     ls_command.arg("-c").arg(format!(
-        "find \"{}\" -type d -maxdepth 1 -printf \"%p\\n\"",
+        "find \"{}\" -type d -maxdepth {depth} -printf \"%p\\n\"",
         current_folder.to_string_lossy()
     ));
     let output = &ls_command.output()?.stdout;
     Ok(String::from_utf8(output.to_vec()).expect("unknown folder"))
 }
 
-fn get_files(current_folder: &Path) -> Result<String, Error> {
+fn get_files(current_folder: &Path, depth: u8) -> Result<String, Error> {
     let mut find_command = Command::new("sh");
     find_command.arg("-c").arg(format!(
-        "find \"{}\" -type f -maxdepth 1 -printf \"%p__FILE_SIZE=%k\\n\"",
+        "find \"{}\" -type f -maxdepth {depth} -printf \"%p__FILE_SIZE=%k\\n\"",
         current_folder.to_string_lossy()
     ));
     let output = &find_command.output()?.stdout;
@@ -118,15 +117,15 @@ fn process_stdout(
             continue;
         }
         let name = String::from(
-            path.file_name()
-                .unwrap_or(OsStr::new("/"))
+            path.strip_prefix(current_path)
+                .unwrap() // This should never fail
                 .to_string_lossy(),
         );
         entries.push(GallideEntry::new(path, name, t, size))
     }
 }
 
-pub fn get_folder_contents(current_folder: &Path) -> Result<Vec<GallideEntry>, Error> {
+pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<Vec<GallideEntry>, Error> {
     let mut entries: Vec<GallideEntry> = Vec::new();
 
     let mut previous_folder: PathBuf = current_folder.to_path_buf();
@@ -140,14 +139,14 @@ pub fn get_folder_contents(current_folder: &Path) -> Result<Vec<GallideEntry>, E
     process_stdout(
         false,
         &mut entries,
-        get_folders(current_folder)?,
+        get_folders(current_folder, depth)?,
         current_folder,
         Folder,
     );
     process_stdout(
         true,
         &mut entries,
-        get_files(current_folder)?,
+        get_files(current_folder, depth)?,
         current_folder,
         File,
     );

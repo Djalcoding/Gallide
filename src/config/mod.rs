@@ -91,6 +91,7 @@ pub struct MainBoxConfig {
     pub title: String,
     pub write_mode_title: String,
     pub display_file_size: bool,
+    pub default_depth: u8,
 }
 impl Default for MainBoxConfig {
     fn default() -> Self {
@@ -115,6 +116,7 @@ impl Default for MainBoxConfig {
             title: String::from("Directories"),
             write_mode_title: String::from(""),
             display_file_size: true,
+            default_depth: 1,
         }
     }
 }
@@ -154,6 +156,9 @@ impl ParsedConstructable for MainBoxConfig {
             display_file_size: data
                 .as_boolean("display file size")
                 .unwrap_or(default.display_file_size),
+            default_depth: data
+                .as_number("default depth")
+                .unwrap_or(default.default_depth as f64) as u8,
         }
     }
 }

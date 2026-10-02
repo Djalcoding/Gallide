@@ -72,10 +72,11 @@ pub mod ui {
             if config.display_file_size
                 && let Some(size) = directory.size()
             {
+                let size_text = format!("{} KB", size);
                 spans.push(Span::raw(
-                    " ".repeat(width as usize - spans[0].width() - spans[1].width() - 10),
+                    " ".repeat((width as usize).saturating_sub(spans[0].width()).saturating_sub(spans[1].width()).saturating_sub(size_text.len()).saturating_sub(5)),
                 ));
-                spans.push(Span::raw(format!("{} KB", size)));
+                spans.push(Span::raw(size_text));
             }
             entries.push(ListItem::new(Spans::from(spans)));
         });
@@ -177,16 +178,28 @@ pub mod ui {
             Span::styled(": d  ", keybind_style),
             Span::styled("Rename", header_style),
             Span::styled(": r  ", keybind_style),
+            Span::styled("Depth", header_style),
+            Span::styled(": +/-  ", keybind_style),
         ]))
         .style(optional_bg_style(background_color))
     }
 
-    fn build_top_bar(title: &str, config: &Config) -> Paragraph<'static> {
-        Paragraph::new(Spans::from(vec![Span::styled(
+    fn build_top_bar(
+        area: &Rect,
+        title: &str,
+        info: Option<String>,
+        config: &Config,
+    ) -> Paragraph<'static> {
+        let mut spans = vec![Span::styled(
             String::from(title),
             Style::default().add_modifier(Modifier::BOLD),
-        )]))
-        .style(optional_bg_style(config.main_box.background_color))
+        )];
+        if let Some(information) = info {
+            spans.push(Span::raw(" ".repeat(area.width as usize - title.len() - information.len() - 3)));
+            spans.push(Span::raw(information));
+        }
+        Paragraph::new(Spans::from(spans))
+            .style(optional_bg_style(config.main_box.background_color))
     }
 
     pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
@@ -211,16 +224,19 @@ pub mod ui {
         list_state.select(Some(state.get_selected_box()));
         let current_dir_cow = state.get_current_directory().to_string_lossy();
         if config.directory_line.display {
+            let chunk = chunks.next().unwrap();
             f.render_widget(
                 build_top_bar(
+                    &chunk,
                     if state.is_in_write_mode() {
                         state.user_input_title()
                     } else {
                         &current_dir_cow
                     },
+                    Some(format!("Depth : {}", state.depth())),
                     config,
                 ),
-                chunks.next().unwrap(),
+                chunk
             );
         }
 

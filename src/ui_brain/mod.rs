@@ -17,6 +17,7 @@ pub enum Mode {
 
 pub struct State {
     cursor: usize,
+    depth: u8,
     elements: VecDeque<GallideEntry>,
     search_bar_text: String,
     current_dir: PathBuf,
@@ -29,9 +30,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(config: Config, reporter: Reporter) -> Self {
+    pub fn new(config: Config, reporter: Reporter, start_depth: u8) -> Self {
         let mut state = State {
             cursor: 0,
+            depth: start_depth,
             elements: VecDeque::new(),
             search_bar_text: String::from(""),
             running: true,
@@ -83,13 +85,28 @@ impl State {
         }
     }
 
+    pub fn increase_depth(&mut self) {
+        self.depth = self.depth.saturating_add(1);
+        self.rebuild_directories();
+    }
+    pub fn decrease_depth(&mut self) {
+        if self.depth != 1 {
+            self.depth -= 1;
+        }
+        self.rebuild_directories();
+    }
+
+    pub fn depth(&self)-> u8 {
+        self.depth
+    }
+
     fn reset_search_bar(&mut self) {
         self.search_bar_text = String::new();
         self.trim_directories();
     }
 
     fn get_current_dir_folder_contents(&mut self) -> Vec<GallideEntry> {
-        let contents = get_folder_contents(self.get_current_directory());
+        let contents = get_folder_contents(self.get_current_directory(), self.depth);
         match contents {
             Ok(entries) => entries,
             Err(e) => {
