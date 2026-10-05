@@ -1,0 +1,266 @@
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction::Vertical, Layout, Position, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
+};
+
+use crate::{
+    config::{Config, MainBoxConfig, SearchBarConfig, TooltipConfig}, read_ls::{EntryType, GallideEntry, GallideEntryVec}, state::State,
+};
+
+fn optionally_add_borders<'a>(block: Block<'a>, border_type: &Option<BorderType>) -> Block<'a> {
+    block
+        .borders(if border_type.is_some() {
+            Borders::ALL
+        } else {
+            Borders::NONE
+        })
+        .border_type(border_type.unwrap_or(BorderType::Plain))
+}
+
+fn optional_bg_style(color: Option<Color>) -> Style {
+    if let Some(c) = color {
+        Style::default().bg(c)
+    } else {
+        Style::default()
+    }
+}
+
+fn build_entries<'a, I>(directories: I, config: &'a MainBoxConfig, width: u16) -> Vec<ListItem<'a>>
+where
+    I: Iterator<Item = &'a GallideEntry>,
+{
+    let mut entries = Vec::new();
+    directories.for_each(|directory| {
+        let symbol: Span;
+        if let EntryType::File = directory.entry_type {
+            symbol = Span::styled(
+                &config.file_symbol,
+                Style::default().fg(config.file_symbol_color),
+            );
+        } else if let EntryType::Folder = directory.entry_type {
+            symbol = Span::styled(
+                &config.directory_symbol,
+                Style::default().fg(config.directory_symbol_color),
+            );
+        } else {
+            symbol = Span::raw("");
+        }
+        let mut lines = vec![
+            symbol,
+            Span::styled(directory.name(), Style::default().fg(config.text_color)),
+        ];
+        if config.display_file_size
+            && let Some(size) = directory.size()
+        {
+            let size_text = format!("{} KB", size);
+            lines.push(Span::raw(
+                " ".repeat(
+                    (width as usize)
+                        .saturating_sub(lines[0].width())
+                        .saturating_sub(lines[1].width())
+                        .saturating_sub(size_text.len())
+                        .saturating_sub(5),
+                ),
+            ));
+            lines.push(Span::raw(size_text));
+        }
+        entries.push(ListItem::new(Line::from(lines)));
+    });
+    entries
+}
+
+pub fn build_text_input<'a>(
+    title: &'a str,
+    state: &'a State,
+    config: &'a MainBoxConfig,
+) -> Paragraph<'a> {
+    let mut style = Style::default().fg(config.writing_border_config.border_color);
+    if let Some(background) = config.background_color {
+        style = style.bg(background)
+    }
+    Paragraph::new(state.question_box_text.read().as_str())
+        .style(Style::default().fg(Color::White)) // TODO : add config for text color
+        .block(optionally_add_borders(
+            Block::default().title(title).style(style),
+            &config.writing_border_config.border_type,
+        ))
+}
+
+pub fn build_directory_list(
+    directories: GallideEntryVec,
+    config: &MainBoxConfig,
+) -> List<'static>
+{
+    let mut style = Style::default().fg(config.border_config.border_color);
+    if let Some(background) = config.background_color {
+        style = style.bg(background)
+    }
+    let block = if config.title.is_empty() {
+        Block::default()
+    } else {
+        Block::default().title(config.title.clone())
+    };
+    List::new(&directories.items)
+        .block(optionally_add_borders(
+            block,
+            &config.border_config.border_type,
+        ))
+        .style(style)
+        .highlight_style(
+            Style::default()
+                .fg(config.focus_text_color)
+                .bg(config.focus_color),
+        )
+        .highlight_symbol(config.focus_symbol.clone())
+}
+
+pub fn build_search_bar<'a>(state: &State, config: &SearchBarConfig) -> List<'a> {
+    let border_style = Style::default().fg(if state.is_inserting() {
+        config.insert_mode_border_config.border_color
+    } else {
+        config.border_config.border_color
+    });
+    let block = optionally_add_borders(
+        Block::default()
+            .title(config.title.clone())
+            .border_style(border_style)
+            .style(optional_bg_style(config.background_color)),
+        &config.border_config.border_type,
+    );
+    List::new(vec![ListItem::new(state.search_bar_text.read().clone())]).block(block)
+}
+
+pub fn build_tooltips(
+    config: &TooltipConfig,
+    background_color: Option<Color>,
+) -> Paragraph<'static> {
+    let header_style = Style::default()
+        .bg(config.highlight_color)
+        .fg(config.text_color)
+        .add_modifier(Modifier::BOLD);
+
+    let keybind_style = Style::default()
+        .fg(config.keybind_color)
+        .add_modifier(Modifier::ITALIC);
+
+    Paragraph::new(Line::from(vec![
+        Span::styled("Move", header_style),
+        Span::styled(": jk/↓↑  ", keybind_style),
+        Span::styled("Exit", header_style),
+        Span::styled(": q/ESC  ", keybind_style),
+        Span::styled("Search", header_style),
+        Span::styled(": i  ", keybind_style),
+        Span::styled("Select", header_style),
+        Span::styled(": ENTER↵/l/→  ", keybind_style),
+        Span::styled("Go back", header_style),
+        Span::styled(": h/←  ", keybind_style),
+        Span::styled("Create", header_style),
+        Span::styled(": a  ", keybind_style),
+        Span::styled("Remove", header_style),
+        Span::styled(": d  ", keybind_style),
+        Span::styled("Rename", header_style),
+        Span::styled(": r  ", keybind_style),
+        Span::styled("Depth", header_style),
+        Span::styled(": +/-  ", keybind_style),
+    ]))
+    .style(optional_bg_style(background_color))
+}
+
+pub fn build_top_bar(
+    area: &Rect,
+    title: &str,
+    info: Option<String>,
+    config: &Config,
+) -> Paragraph<'static> {
+    let mut spans = vec![Span::styled(
+        String::from(title),
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
+    if let Some(information) = info {
+        spans.push(Span::raw(
+            " ".repeat(area.width as usize - title.len() - information.len() - 3),
+        ));
+        spans.push(Span::raw(information));
+    }
+    Paragraph::new(Line::from(spans)).style(optional_bg_style(config.main_box.background_color))
+}
+
+impl State {
+    pub fn render(&self, frame: &mut Frame, config: &Config) {
+        let mut constraints = vec![];
+        if config.directory_line.display {
+            constraints.push(Constraint::Length(1));
+        }
+        constraints.push(Constraint::Min(0));
+        if config.search_bar.enabled {
+            constraints.push(Constraint::Length(3));
+        }
+        if config.tooltips.display {
+            constraints.push(Constraint::Length(1));
+        }
+        let mut list_state: ListState = ListState::default();
+        let chunks = Layout::default()
+            .direction(Vertical)
+            .constraints(constraints)
+            .split(frame.area());
+        let mut chunk_iter = chunks.iter();
+
+        list_state.select(Some(self.cursor()));
+        let current_dir_cow = self.current_dir.to_string_lossy();
+        if config.directory_line.display {
+            let chunk = chunk_iter.next().unwrap();
+            frame.render_widget(
+                build_top_bar(
+                    chunk,
+                    if self.is_in_write_mode() {
+                        &self.user_input_request.title
+                    } else {
+                        &current_dir_cow
+                    },
+                    Some(format!("Depth : {}", self.depth)),
+                    config,
+                ),
+                *chunk,
+            );
+        }
+
+        if self.is_in_write_mode() {
+            let area = chunk_iter.next().unwrap();
+            frame.render_widget(
+                build_text_input(&config.main_box.write_mode_title, self, &config.main_box),
+                *area,
+            );
+            frame.set_cursor_position(Position::new(
+                area.x + self.question_box_text.len() as u16 + 1,
+                area.y + 1,
+            ));
+        } else {
+            let chunk = chunk_iter.next().unwrap();
+            frame.render_stateful_widget(
+                build_directory_list(self.elements, &config.main_box),
+                *chunk,
+                &mut list_state,
+            );
+        }
+        if config.search_bar.enabled {
+            let area = chunk_iter.next().unwrap();
+            frame.render_widget(build_search_bar(self, &config.search_bar), *area);
+            if self.is_inserting() {
+                frame.set_cursor_position(Position::new(
+                    area.x + self.search_bar_text.len() as u16 + 1,
+                    area.y + 1,
+                ));
+            }
+        }
+
+        if config.tooltips.display {
+            frame.render_widget(
+                build_tooltips(&config.tooltips, config.main_box.background_color),
+                *chunk_iter.next().unwrap(),
+            );
+        }
+    }
+}

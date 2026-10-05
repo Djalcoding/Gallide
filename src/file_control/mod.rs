@@ -134,7 +134,7 @@ pub fn create_ressource_request() -> UserInputRequest {
         String::from("Insert new ressource name"),
         false,
         Box::new(move |state, name| {
-            let mut directory = state.get_current_directory().clone();
+            let mut directory = state.current_directory().to_path_buf();
             let message: Option<String>;
             let exit_type: ExitType = match create_ressource(name, &directory) {
                 Err(e) => {

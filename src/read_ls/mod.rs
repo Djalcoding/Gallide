@@ -1,10 +1,12 @@
 use std::{
-    cmp::Ordering::{Greater, Less},
+    collections::VecDeque,
     fs,
     io::Error,
     path::{Path, PathBuf},
     process::Command,
 };
+
+use ratatui::widgets::ListItem;
 
 use crate::read_ls::EntryType::{File, Folder};
 
@@ -15,39 +17,98 @@ pub enum EntryType {
     SpecialSign,
 }
 
-pub struct GallideEntry {
-    path: PathBuf,
-    name: String,
-    pub entry_type: EntryType,
-    size: Option<u64>,
+pub struct GallideEntryVec {
+    pub names: VecDeque<String>,
+    pub paths: VecDeque<PathBuf>,
+    pub size: VecDeque<Option<u64>>,
+    pub types: VecDeque<EntryType>,
+    pub items: VecDeque<ListItem<'static>>,
 }
 
-impl GallideEntry {
-    pub fn new(path: PathBuf, name: String, entry_type: EntryType, size: Option<u64>) -> Self {
-        GallideEntry {
-            path,
-            name,
-            entry_type,
-            size,
+impl GallideEntryVec {
+    pub fn new() -> Self {
+        Self {
+            names: VecDeque::new(),
+            paths: VecDeque::new(),
+            size: VecDeque::new(),
+            types: VecDeque::new(),
+            items: VecDeque::new(),
         }
     }
-    pub fn set_type(&mut self) {}
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+
+    pub fn len(&self) -> usize {
+        self.names.len()
     }
-    pub fn name(&self) -> &String {
-        &self.name
+
+    fn less_or_equal(&self, left: usize, right: usize) -> bool {
+        let left_sign = self.types[left];
+        let right_sign = self.types[right];
+        let left_name = self.names[left].to_lowercase();
+        let right_name = self.names[right].to_lowercase();
+        if left_sign == EntryType::SpecialSign
+            || (left_sign == EntryType::File && left_sign == EntryType::Folder)
+        {
+            false
+        } else if right_sign == EntryType::SpecialSign
+            || (right_sign == EntryType::File && left_sign == EntryType::Folder)
+        {
+            true
+        } else if left_name.starts_with('.') {
+            false
+        } else if right_name.starts_with('.') {
+            true
+        } else {
+            left_name.cmp(&right_name).is_le()
+        }
     }
-    pub fn size(&self) -> Option<u64> {
-        self.size
+
+    fn swap(&mut self, i: usize, j: usize) {
+        self.names.swap(i, j);
+        self.paths.swap(i, j);
+        self.size.swap(i, j);
+        self.types.swap(i, j);
+        self.items.swap(i, j);
     }
-    pub fn set_name(&mut self, new_name: &str) {
-        self.name = String::from(new_name);
-        self.path.pop();
-        self.path.push(new_name);
+
+    fn partition(&mut self, low: usize, high: usize) -> usize {
+        let mut i = low;
+
+        for j in low..high {
+            if self.less_or_equal(j, high) {
+                i += 1;
+                self.swap(i, j);
+            }
+        }
+        self.swap(i + 1, high);
+        i + 1
+    }
+    fn sort_recurse(&mut self, low: usize, high: usize) {
+        if low < high {
+            let pi = self.partition(low, high);
+
+            self.sort_recurse(low, pi - 1);
+            self.sort_recurse(pi + 1, high);
+        }
+    }
+    pub fn sort(&mut self) {
+        self.sort_recurse(0, self.names.len() - 1);
+    }
+
+    pub fn push(
+        &mut self,
+        path: PathBuf,
+        name: String,
+        entry_type: EntryType,
+        size: Option<u64>,
+        item: ListItem<'static>,
+    ) {
+        self.paths.push_front(path);
+        self.names.push_front(name);
+        self.types.push_front(entry_type);
+        self.size.push_front(size);
+        self.items.push_front(item);
     }
 }
-
 fn get_folders(current_folder: &Path, depth: u8) -> Result<String, Error> {
     let mut ls_command = Command::new("sh");
     ls_command.arg("-c").arg(format!(
@@ -68,25 +129,9 @@ fn get_files(current_folder: &Path, depth: u8) -> Result<String, Error> {
     Ok(String::from_utf8(output.to_vec()).expect("unknown file"))
 }
 
-fn cmp_entries(a: &GallideEntry, b: &GallideEntry) -> std::cmp::Ordering {
-    if a.entry_type == EntryType::SpecialSign || (a.entry_type == Folder && b.entry_type == File) {
-        return Less;
-    } else if b.entry_type == EntryType::SpecialSign
-        || (a.entry_type == File && b.entry_type == Folder)
-    {
-        return Greater;
-    }
-    if a.name().starts_with('.') {
-        return Greater;
-    } else if b.name().starts_with('.') {
-        return Less;
-    }
-    a.name().to_lowercase().cmp(&b.name().to_lowercase())
-}
-
 fn process_stdout(
     has_size: bool,
-    entries: &mut Vec<GallideEntry>,
+    entries: &mut GallideEntryVec,
     split: String,
     current_path: &Path,
     t: EntryType,
@@ -121,21 +166,23 @@ fn process_stdout(
                 .unwrap() // This should never fail
                 .to_string_lossy(),
         );
-        entries.push(GallideEntry::new(path, name, t, size))
+        let item = ListItem::new("template_entry");
+        entries.push(path, name, t, size, item)
     }
 }
 
-pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<Vec<GallideEntry>, Error> {
-    let mut entries: Vec<GallideEntry> = Vec::new();
+pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEntryVec, Error> {
+    let mut entries: GallideEntryVec = GallideEntryVec::new();
 
     let mut previous_folder: PathBuf = current_folder.to_path_buf();
     previous_folder.pop();
-    entries.push(GallideEntry::new(
+    entries.push(
         previous_folder,
         String::from(".."),
         EntryType::SpecialSign,
         None,
-    ));
+        ListItem::new(".."),
+    );
     process_stdout(
         false,
         &mut entries,
@@ -151,7 +198,7 @@ pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<Vec<Galli
         File,
     );
 
-    entries.sort_by(cmp_entries);
+    entries.sort();
     Ok(entries)
 }
 
