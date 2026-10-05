@@ -4,23 +4,16 @@ pub mod config;
 pub mod file_control;
 pub mod read_ls;
 pub mod reporter;
-pub mod ui_brain;
+pub mod state;
 
 pub mod ui {
 
-    use tui::{
-        Frame,
-        backend::Backend,
-        layout::{Constraint, Layout, Rect},
-        style::{Color, Modifier, Style},
-        text::{Span, Spans},
-        widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
-    };
+    use ratatui::{Frame, layout::{Constraint, Direction::Vertical, Layout, Rect}, style::{Color, Modifier, Style}, text::{Line, Span}, widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph}};
 
-    use crate::{
+use crate::{
         config::{Config, MainBoxConfig, SearchBarConfig, TooltipConfig},
         read_ls::{EntryType, GallideEntry},
-        ui_brain::State,
+        state::State,
     };
 
     fn optionally_add_borders<'a>(block: Block<'a>, border_type: &Option<BorderType>) -> Block<'a> {
@@ -65,7 +58,7 @@ pub mod ui {
             } else {
                 symbol = Span::raw("");
             }
-            let mut spans = vec![
+            let mut lines = vec![
                 symbol,
                 Span::styled(directory.name(), Style::default().fg(config.text_color)),
             ];
@@ -73,12 +66,12 @@ pub mod ui {
                 && let Some(size) = directory.size()
             {
                 let size_text = format!("{} KB", size);
-                spans.push(Span::raw(
-                    " ".repeat((width as usize).saturating_sub(spans[0].width()).saturating_sub(spans[1].width()).saturating_sub(size_text.len()).saturating_sub(5)),
+                lines.push(Span::raw(
+                    " ".repeat((width as usize).saturating_sub(lines[0].width()).saturating_sub(lines[1].width()).saturating_sub(size_text.len()).saturating_sub(5)),
                 ));
-                spans.push(Span::raw(size_text));
+                lines.push(Span::raw(size_text));
             }
-            entries.push(ListItem::new(Spans::from(spans)));
+            entries.push(ListItem::new(Line::from(lines)));
         });
         entries
     }
@@ -129,7 +122,7 @@ pub mod ui {
                     .fg(config.focus_text_color)
                     .bg(config.focus_color),
             )
-            .highlight_symbol(&config.focus_symbol)
+            .highlight_symbol(config.focus_symbol.clone())
     }
 
     fn build_search_bar<'a>(state: &State, config: &SearchBarConfig) -> List<'a> {
@@ -161,7 +154,7 @@ pub mod ui {
             .fg(config.keybind_color)
             .add_modifier(Modifier::ITALIC);
 
-        Paragraph::new(Spans::from(vec![
+        Paragraph::new(Line::from(vec![
             Span::styled("Move", header_style),
             Span::styled(": jk/↓↑  ", keybind_style),
             Span::styled("Exit", header_style),
@@ -198,11 +191,11 @@ pub mod ui {
             spans.push(Span::raw(" ".repeat(area.width as usize - title.len() - information.len() - 3)));
             spans.push(Span::raw(information));
         }
-        Paragraph::new(Spans::from(spans))
+        Paragraph::new(Line::from(spans))
             .style(optional_bg_style(config.main_box.background_color))
     }
 
-    pub fn build_ui<B: Backend>(f: &mut Frame<B>, state: &State, config: &Config) {
+    pub fn render(f: &mut Frame, state: &State, config: &Config) {
         let mut constraints = vec![];
         if config.directory_line.display {
             constraints.push(Constraint::Length(1));
@@ -215,19 +208,19 @@ pub mod ui {
             constraints.push(Constraint::Length(1));
         }
         let mut list_state: ListState = ListState::default();
-        let mut chunks = Layout::default()
-            .direction(tui::layout::Direction::Vertical)
+        let chunks = Layout::default()
+            .direction(Vertical)
             .constraints(constraints)
-            .split(f.size())
-            .into_iter();
+            .split(f.area());
+        let mut chunk_iter = chunks.iter();
 
         list_state.select(Some(state.get_selected_box()));
         let current_dir_cow = state.get_current_directory().to_string_lossy();
         if config.directory_line.display {
-            let chunk = chunks.next().unwrap();
+            let chunk = chunk_iter.next().unwrap();
             f.render_widget(
                 build_top_bar(
-                    &chunk,
+                    chunk,
                     if state.is_in_write_mode() {
                         state.user_input_title()
                     } else {
@@ -236,34 +229,34 @@ pub mod ui {
                     Some(format!("Depth : {}", state.depth())),
                     config,
                 ),
-                chunk
+                *chunk
             );
         }
 
         if state.is_in_write_mode() {
             f.render_widget(
                 build_text_input(&config.main_box.write_mode_title, state, &config.main_box),
-                chunks.next().unwrap(),
+                *chunk_iter.next().unwrap(),
             );
         } else {
-            let chunk = chunks.next().unwrap();
+            let chunk = chunk_iter.next().unwrap();
             f.render_stateful_widget(
-                build_directory_list(state.elements().iter(), &config.main_box, &chunk),
-                chunk,
+                build_directory_list(state.elements().iter(), &config.main_box, chunk),
+                *chunk,
                 &mut list_state,
             );
         }
         if config.search_bar.enabled {
             f.render_widget(
                 build_search_bar(state, &config.search_bar),
-                chunks.next().unwrap(),
+                *chunk_iter.next().unwrap(),
             );
         }
 
         if config.tooltips.display {
             f.render_widget(
                 build_tooltips(&config.tooltips, config.main_box.background_color),
-                chunks.next().unwrap(),
+                *chunk_iter.next().unwrap(),
             );
         }
     }

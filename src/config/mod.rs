@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use djal_parser::{datastructure::ParsedData, error_handling::FileReadingError};
-use tui::{style::Color, widgets::BorderType};
+use ratatui::{style::Color, widgets::BorderType};
 
 type DColor = djal_parser::color::Color;
-type TColor = tui::style::Color;
+type TColor = ratatui::style::Color;
 
 pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor, FileReadingError> {
     let color: DColor = djal_color?;

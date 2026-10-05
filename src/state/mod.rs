@@ -1,11 +1,12 @@
 pub mod user_input;
 
+use crossterm::event::{self, Event::Key, KeyCode};
+use ratatui::{DefaultTerminal};
+
 use crate::{
-    config::Config,
-    read_ls::{EntryType, GallideEntry, get_absolute_path_from_str, get_folder_contents},
-    reporter::Reporter,
+    config::Config, file_control::{create_ressource_request, delete_ressource_request, rename_ressource_request}, read_ls::{EntryType, GallideEntry, get_absolute_path_from_str, get_folder_contents}, reporter::Reporter, state::user_input::UserOperationResult, ui::render,
 };
-use std::{collections::VecDeque, path::PathBuf};
+use std::{collections::VecDeque, path::PathBuf, time::Duration};
 
 #[derive(PartialEq, Clone)]
 pub enum Mode {
@@ -22,25 +23,25 @@ pub struct State {
     search_bar_text: String,
     current_dir: PathBuf,
     running: bool,
+    pub exited: bool,
     pub mode: Mode,
     config: Config,
-    reporter: Reporter,
     user_input: String,
     pub user_input_request: user_input::UserInputRequest,
 }
 
 impl State {
-    pub fn new(config: Config, reporter: Reporter) -> Self {
+    pub fn new(config: Config) -> Self {
         let mut state = State {
             cursor: 0,
             depth: config.main_box.default_depth,
             elements: VecDeque::new(),
             search_bar_text: String::from(""),
             running: true,
+            exited: true,
             current_dir: get_absolute_path_from_str("."),
             mode: Mode::SELECTING,
             config,
-            reporter,
             user_input: String::new(),
             user_input_request: user_input::UserInputRequest {
                 edit_ressource: false,
@@ -53,6 +54,102 @@ impl State {
             state.cursor = 1;
         }
         state
+    }
+
+    pub fn run(&mut self, terminal:&mut DefaultTerminal) -> std::io::Result<()> {
+        while self.is_running() {
+            terminal.draw(|frame| render(frame, self, &self.config))? ;
+            if event::poll(Duration::from_millis(50))?
+                && let Key(key) = event::read()?
+            {
+                match self.mode {
+                    Mode::INSERT => match key.code {
+                        KeyCode::Esc | KeyCode::Char('\n') => self.switch_mode(),
+                        KeyCode::Backspace => self.backspace(),
+                        KeyCode::Char(character) => self.add_character(character),
+                        KeyCode::Up => self.decrement_selected_box(),
+                        KeyCode::Down => self.increment_selected_box(),
+                        _ => {}
+                    },
+                    Mode::SELECTING => match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => self.decrement_selected_box(),
+                        KeyCode::Down | KeyCode::Char('j') => self.increment_selected_box(),
+
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            self.exited = true;
+                            self.stop();
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            if self.is_selecting_directory() {
+                                self.open_selected_directory();
+                                self.rebuild_directories();
+                            } else {
+                                self.stop();
+                            }
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            self.go_back_one_directory();
+                            self.rebuild_directories();
+                        }
+                        KeyCode::Char('\n') => self.stop(),
+                        KeyCode::Char('i') => {
+                            if self.config.search_bar.enabled {
+                                self.switch_mode()
+                            }
+                        }
+                        KeyCode::Char('c') => self.clear_search_bar(),
+                        KeyCode::Char('a') => {
+                            self.ask_input(create_ressource_request());
+                        }
+                        KeyCode::Char('d') => {
+                            self.ask_input(delete_ressource_request(self.read_selected_entry()));
+                        }
+                        KeyCode::Char('r') => {
+                            self.ask_input(rename_ressource_request(self.read_selected_entry()));
+                        }
+                        KeyCode::Char('+') => {
+                            self.increase_depth();
+                        }
+                        KeyCode::Char('-') => {
+                            self.decrease_depth();
+                        }
+                        _ => {}
+                    },
+                    #[allow(clippy::needless_late_init)]
+                    Mode::WRITING => match key.code {
+                        KeyCode::Esc => self.mode = Mode::SELECTING,
+                        KeyCode::Char('\n') => {
+                            let user_input = self.read_user_input().clone();
+                            let request = self.user_input_request.get_closure();
+
+                            let result: UserOperationResult;
+                            if self.user_input_request.edit_ressource
+                                && self.selecting_previous_dir()
+                            {
+                                result = UserOperationResult::operation_on_prev();
+                            } else {
+                                result = request(self, &user_input);
+                            }
+
+                            if let Some(message) = result.message {
+                                self.show_message(result.exit.get_header(), &message);
+                            } else {
+                                self.mode = Mode::SELECTING;
+                            }
+                        }
+                        KeyCode::Char(character) => self.user_input().push(character),
+                        KeyCode::Backspace => {
+                            self.user_input().pop();
+                        }
+                        _ => {}
+                    },
+                    Mode::DISCARD => {
+                        self.mode = Mode::SELECTING;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn get_selected_box(&self) -> usize {
@@ -96,7 +193,7 @@ impl State {
         self.rebuild_directories();
     }
 
-    pub fn depth(&self)-> u8 {
+    pub fn depth(&self) -> u8 {
         self.depth
     }
 
@@ -109,9 +206,7 @@ impl State {
         let contents = get_folder_contents(self.get_current_directory(), self.depth);
         match contents {
             Ok(entries) => entries,
-            Err(e) => {
-                self.reporter
-                    .push(format!("could not read contents of directory because : {e}").as_str());
+            Err(_) => {
                 self.stop();
                 vec![]
             }
@@ -205,15 +300,15 @@ impl State {
         self.reset_search_bar();
         self.move_selected_box_to_start()
     }
-    pub fn get_bash_string(&self, exited: bool) -> String {
+    pub fn get_bash_string(&self) -> String {
         format!(
             "{}'{}",
-            if self.is_selecting_directory() || exited {
+            if self.is_selecting_directory() || self.exited {
                 "D"
             } else {
                 "F"
             },
-            if exited {
+            if self.exited {
                 self.get_current_directory()
             } else {
                 self.read_selected_entry().path()
@@ -249,9 +344,6 @@ impl State {
         &self.config
     }
 
-    pub fn publish_reports(&mut self) {
-        self.reporter.publish();
-    }
 
     pub fn user_input(&mut self) -> &mut String {
         &mut self.user_input

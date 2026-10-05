@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     read_ls::{EntryType, GallideEntry},
-    ui_brain::user_input::{ExitType, UserInputRequest, UserOperationResult},
+    state::user_input::{ExitType, UserInputRequest, UserOperationResult},
 };
 
 // TODO : move this to Entry

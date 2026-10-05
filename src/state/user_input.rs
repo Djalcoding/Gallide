@@ -1,4 +1,4 @@
-use crate::ui_brain::State;
+use crate::state::State;
 
 #[derive(std::cmp::PartialEq)]
 pub enum ExitType {

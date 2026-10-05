@@ -9,6 +9,6 @@ repository = "https://github.com/Djalcoding/Gallide"
 license-file = "LICENSE.txt"
 
 [dependencies]
+crossterm = "0.29.0"
 djal_parser = "0.2.0"
-termion = "4.0.5"
-tui = { version = "0.19", default-features = false, features = ['termion'] }
+ratatui = "0.30.2"
