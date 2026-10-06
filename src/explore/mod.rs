@@ -9,11 +9,10 @@ use ratatui::{
     text::{Line, Span},
     widgets::List,
 };
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     config::MainBoxConfig,
-    explore::EntryType::{File, Folder},
 };
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
@@ -73,20 +72,23 @@ impl GallideEntry {
     }
 }
 
-fn cmp_entries(a: &GallideEntry, b: &GallideEntry) -> std::cmp::Ordering {
-    if a.entry_type == EntryType::SpecialSign || (a.entry_type == Folder && b.entry_type == File) {
+fn cmp_entries(a: &DirEntry, b: &DirEntry) -> std::cmp::Ordering {
+    let a_meta = a.metadata().unwrap();
+    let b_meta = b.metadata().unwrap();
+    if a_meta.is_dir() && b_meta.is_file() {
         return Less;
-    } else if b.entry_type == EntryType::SpecialSign
-        || (a.entry_type == File && b.entry_type == Folder)
-    {
+    } else if a_meta.is_file() && b_meta.is_dir() {
         return Greater;
     }
-    if a.name().starts_with('.') {
+    if a.file_name().to_string_lossy().starts_with('.') {
         return Greater;
-    } else if b.name().starts_with('.') {
+    } else if b.file_name().to_string_lossy().starts_with('.') {
         return Less;
     }
-    a.name().to_lowercase().cmp(&b.name().to_lowercase())
+    a.file_name()
+        .to_string_lossy()
+        .to_lowercase()
+        .cmp(&b.file_name().to_string_lossy().to_lowercase())
 }
 
 pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEntryVec, Error> {
@@ -94,14 +96,9 @@ pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEn
     entries.reserve(300);
     let mut previous_folder: PathBuf = current_folder.to_path_buf();
     previous_folder.pop();
-    entries.push_back(GallideEntry::new(
-        previous_folder,
-        String::from(".."),
-        EntryType::SpecialSign,
-        None,
-    ));
     for element in WalkDir::new(current_folder)
         .max_depth(depth as usize)
+        .sort_by(cmp_entries)
         .into_iter()
         .flatten()
     {
@@ -122,7 +119,12 @@ pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEn
             None,
         ))
     }
-    entries.make_contiguous().sort_by(cmp_entries);
+    entries.push_front(GallideEntry::new(
+        previous_folder,
+        String::from(".."),
+        EntryType::SpecialSign,
+        None,
+    ));
     Ok(entries)
 }
 
