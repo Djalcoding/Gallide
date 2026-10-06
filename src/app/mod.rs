@@ -141,10 +141,14 @@ impl App {
         if !self.config.case_sensitive {
             search_bar_text = search_bar_text.to_lowercase();
         }
-        let mut highlights:Vec<u16> = Vec::new();
+        let mut highlights: Vec<u16> = Vec::new();
         let fresh_list = get_folder_contents(&self.current_dir, self.depth).unwrap(); // TODO candy
         for entry in fresh_list {
-            let mut matches = false;
+            if let EntryType::SpecialSign = entry.entry_type {
+                highlights.push(0);
+                self.elements.push_back(entry);
+                continue;
+            }
             for part in entry.name().split('/') {
                 let part = if self.config.case_sensitive {
                     part
@@ -152,23 +156,18 @@ impl App {
                     &part.to_lowercase()
                 };
                 if part.starts_with(&search_bar_text) {
-                    matches = true;
+                    highlights.push(search_bar_text.len() as u16);
+                    self.elements.push_back(entry);
                     break;
                 }
             }
-            if let EntryType::SpecialSign = entry.entry_type {
-                highlights.push(search_bar_text.len() as u16);
-                highlights.push(0);
-            } else if matches {
-                highlights.push(search_bar_text.len() as u16);
-                self.elements.push_back(entry);
-            } else {
-                highlights.push(0);
-            }
         }
         self.cursor.select(Some(0));
-        self.screen
-            .update_main_box(build_entry_list(&self.elements, highlights, &self.config.main_box));
+        self.screen.update_main_box(build_entry_list(
+            &self.elements,
+            highlights,
+            &self.config.main_box,
+        ));
     }
 
     pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {

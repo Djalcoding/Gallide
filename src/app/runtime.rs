@@ -60,17 +60,15 @@ impl App {
     }
 
     fn handle_insert_mode_input(&mut self, key: KeyEvent) {
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.handle_select_mode_input(key);
-            return;
-        }
         match key.code {
             KeyCode::Esc | KeyCode::Enter => self.toggle_insert_mode(),
             KeyCode::Backspace => self.backspace(),
-            KeyCode::Char(character) => self.add_character(character),
-            KeyCode::Up => self.move_down(),
-            KeyCode::Down => self.move_up(),
-            _ => {}
+            KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.add_character(character)
+            }
+            _ => {
+                self.handle_select_mode_input(key);
+            }
         }
     }
 
