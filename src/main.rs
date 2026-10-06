@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use gallide_bin::{config::*, state::State};
+use gallide_bin::{config::*, app::App};
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<String> = env::args().collect();
@@ -18,7 +18,7 @@ fn main() -> Result<(), io::Error> {
     } else {
         Config::default()
     };
-    let mut state = State::new(config);
+    let mut state = App::new(config);
 
     ratatui::run(|terminal| state.run(terminal))?;
 
