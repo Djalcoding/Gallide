@@ -54,7 +54,12 @@ impl Screen {
         )];
         if let Some(information) = info {
             spans.push(Span::raw(
-                " ".repeat(area.width as usize - len - information.len() - 3),
+                " ".repeat(
+                    (area.width as usize)
+                        .saturating_sub(len)
+                        .saturating_sub(information.len())
+                        .saturating_sub(3),
+                ),
             ));
             spans.push(Span::raw(information));
         }

@@ -11,9 +11,7 @@ use ratatui::{
 };
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{
-    config::MainBoxConfig,
-};
+use crate::config::MainBoxConfig;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
@@ -73,22 +71,24 @@ impl GallideEntry {
 }
 
 fn cmp_entries(a: &DirEntry, b: &DirEntry) -> std::cmp::Ordering {
-    let a_meta = a.metadata().unwrap();
+    let a_meta = a.metadata().unwrap(); // TODO : hash this
     let b_meta = b.metadata().unwrap();
-    if a_meta.is_dir() && b_meta.is_file() {
-        return Less;
-    } else if a_meta.is_file() && b_meta.is_dir() {
-        return Greater;
+    let a_name = a.file_name().to_string_lossy();
+    let b_name = b.file_name().to_string_lossy();
+    match (a_meta.is_dir(), b_meta.is_dir()) {
+        (true, false) => return Less,
+        (false, true) => return Greater,
+        _ => {}
     }
-    if a.file_name().to_string_lossy().starts_with('.') {
-        return Greater;
-    } else if b.file_name().to_string_lossy().starts_with('.') {
-        return Less;
+    match (a_name.starts_with('.'), b_name.starts_with('.')) {
+        (false, true) => return Less,
+        (true, false) => return Greater,
+        _ => {}
     }
-    a.file_name()
-        .to_string_lossy()
+    a_name
         .to_lowercase()
-        .cmp(&b.file_name().to_string_lossy().to_lowercase())
+        .cmp(&b_name.to_lowercase())
+        .then_with(|| a_name.cmp(&b_name))
 }
 
 pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEntryVec, Error> {
@@ -136,7 +136,7 @@ pub fn build_entry_list(
     let list_items = entries
         .iter()
         .enumerate()
-        .map(|(i, e)| e.to_line(highlights[i], config))
+        .map(|(i, entry)| entry.to_line(highlights[i], config))
         .collect::<Vec<Line>>();
 
     List::new(list_items)
