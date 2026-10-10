@@ -415,6 +415,7 @@ version = "0.1.7"
 dependencies = [
  "crossterm",
  "djal_parser",
+ "lazy_static",
  "ratatui",
  "walkdir",
 ]

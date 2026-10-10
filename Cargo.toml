@@ -11,5 +11,10 @@ license-file = "LICENSE.txt"
 [dependencies]
 crossterm = "0.29.0"
 djal_parser = "0.2.0"
+lazy_static = "1.5.1"
 ratatui = "0.30.2"
 walkdir = "2.5.0"
+
+[profile.dev]
+opt-level = 3               
+# overflow-checks = false 

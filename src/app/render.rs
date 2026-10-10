@@ -136,7 +136,7 @@ impl App {
         self.screen.build_top_bar(
             &area,
             self.current_directory().to_string_lossy().to_string(),
-            Some(format!("Depth {}", self.depth)),
+            Some(format!("Depth {}", self.user_state.depth)),
             self.config.main_box.entry_style,
         ); // TODO : move this for only resizes
         if let Some(widget) = &self.screen.top_bar {
@@ -146,7 +146,7 @@ impl App {
         frame.render_stateful_widget(
             &self.screen.main_box,
             *chunk_iter.next().unwrap(),
-            &mut self.cursor,
+            &mut self.user_state.cursor,
         );
         if let Some(widget) = &self.screen.search_bar {
             frame.render_widget(widget, *chunk_iter.next().unwrap());

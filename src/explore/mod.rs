@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering::{Greater, Less},
     collections::VecDeque,
+    fmt::Display,
     io::Error,
     path::{Path, PathBuf},
 };
@@ -12,6 +13,8 @@ use ratatui::{
 use walkdir::{DirEntry, WalkDir};
 
 use crate::config::MainBoxConfig;
+
+pub mod tree;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
@@ -27,6 +30,15 @@ pub struct GallideEntry {
     size: Option<u64>,
 }
 
+impl Display for EntryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntryType::File => write!(f, "File"),
+            EntryType::Folder => write!(f, "Folder"),
+            EntryType::SpecialSign => write!(f, "Special"),
+        }
+    }
+}
 pub type GallideEntryVec = VecDeque<GallideEntry>;
 
 impl GallideEntry {
@@ -136,7 +148,7 @@ pub fn build_entry_list(
     let list_items = entries
         .iter()
         .enumerate()
-        .map(|(i, entry)| entry.to_line(highlights[i], config))
+        .map(|(i, entry)| entry.to_line(0, config))
         .collect::<Vec<Line>>();
 
     List::new(list_items)

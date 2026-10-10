@@ -33,7 +33,7 @@ impl App {
                     self.toggle_insert_mode()
                 }
             }
-            KeyCode::Char('c') => self.search_bar_text.clear(),
+            KeyCode::Char('c') => self.user_state.search_bar_text.clear(),
             KeyCode::Char('a') => {
                 //self.ask_input(create_ressource_request());
             }
@@ -50,9 +50,9 @@ impl App {
                 self.decrease_depth();
             }
             KeyCode::Char(c) if c.is_ascii_digit() => {
-                self.jump_buffer = self.jump_buffer.saturating_mul(10);
-                self.jump_buffer = self
-                    .jump_buffer
+                self.user_state.jump_buffer = self.user_state.jump_buffer.saturating_mul(10);
+                self.user_state.jump_buffer = self
+                    .user_state.jump_buffer
                     .saturating_add(c.to_digit(10).unwrap() as u16)
             }
             _ => {}
@@ -102,17 +102,18 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         while self.is_running() {
+            self.rebuild_directories();
             terminal.draw(|frame| self.render(frame))?;
             if event::poll(Duration::from_millis(50))?
                 && let Key(key) = event::read()?
             {
-                match self.mode {
+                match self.user_state.mode {
                     Mode::INSERT => self.handle_insert_mode_input(key),
                     Mode::SELECTING => self.handle_select_mode_input(key),
                     #[allow(clippy::needless_late_init)]
                     Mode::WRITING => self.handle_write_mode_input(key),
                     Mode::DISCARD => {
-                        self.mode = Mode::SELECTING;
+                        self.user_state.mode = Mode::SELECTING;
                     }
                 }
             }
