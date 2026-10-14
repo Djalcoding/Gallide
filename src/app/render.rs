@@ -3,18 +3,19 @@ use ratatui::{
     layout::{Constraint, Direction::Vertical, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, Paragraph},
+    widgets::{Paragraph},
 };
 
 use crate::{
     app::App,
     config::{Config, SearchBarConfig, TooltipConfig},
+    widget::EntryList,
 };
 
 pub(crate) struct Screen {
     pub constraints: Vec<Constraint>,
     pub top_bar: Option<Line<'static>>,
-    pub main_box: List<'static>,
+    pub main_box: EntryList<'static>,
     pub search_bar: Option<Paragraph<'static>>,
     pub tooltips: Option<Paragraph<'static>>,
 }
@@ -35,7 +36,7 @@ impl Screen {
         Screen {
             constraints,
             top_bar: None,
-            main_box: List::default(),
+            main_box: EntryList::new().highlight_style(config.main_box.highlight_style),
             search_bar: None,
             tooltips: None,
         }
@@ -64,10 +65,6 @@ impl Screen {
             spans.push(Span::raw(information));
         }
         self.top_bar = Some(Line::from(spans).style(style));
-    }
-
-    pub fn update_main_box(&mut self, widget: List<'static>) {
-        self.main_box = widget;
     }
 
     pub fn build_search_bar(&mut self, searchmode: bool, text: String, config: &SearchBarConfig) {
@@ -143,9 +140,10 @@ impl App {
             frame.render_widget(widget, area);
         }
 
-        frame.render_stateful_widget(
-            &self.screen.main_box,
+        self.screen.main_box.render(
+            &self.elements,
             *chunk_iter.next().unwrap(),
+            frame.buffer_mut(),
             &mut self.user_state.cursor,
         );
         if let Some(widget) = &self.screen.search_bar {

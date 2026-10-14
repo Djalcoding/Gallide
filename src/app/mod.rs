@@ -149,7 +149,6 @@ impl App {
 
     pub fn rebuild_directories(&mut self) {
         self.elements.clear();
-        let highlights: Vec<u16> = Vec::new();
         self.elements = self.file_hierarchy.get_entries(
             self.current_directory(),
             &self.user_state.search_bar_text,
@@ -157,11 +156,6 @@ impl App {
             false,
         );
         self.user_state.cursor.select(Some(0));
-        self.screen.update_main_box(build_entry_list(
-            &self.elements,
-            highlights,
-            &self.config.main_box,
-        ));
     }
 
     pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {
