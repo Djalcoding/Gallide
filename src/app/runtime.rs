@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::DefaultTerminal;
@@ -102,7 +102,10 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         while self.is_running() {
-            self.rebuild_directories();
+            if Instant::now() > self.next_update  {
+                self.rebuild_directories();
+                self.next_update = Instant::now() + Duration::from_millis(500);
+            }
             terminal.draw(|frame| self.render(frame))?;
             if event::poll(Duration::from_millis(50))?
                 && let Key(key) = event::read()?

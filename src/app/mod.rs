@@ -9,7 +9,7 @@ use crate::{
         EntryType, GallideEntry, GallideEntryVec, build_entry_list, tree::hierarchy::FileHierarchy,
     },
 };
-use std::{path::{Path, PathBuf}, time::Instant};
+use std::{path::{Path, PathBuf}, time::{Duration, Instant}};
 
 mod render;
 mod runtime;
@@ -40,7 +40,7 @@ pub struct App {
     config: Config,
     running: bool,
     exited: bool,
-    last_update: Instant
+    next_update: Instant
 }
 
 impl App {
@@ -61,7 +61,7 @@ impl App {
             exited: true,
             elements: GallideEntryVec::new(),
             screen: Screen::start(&config),
-            last_update: Instant::now(),
+            next_update: Instant::now() + Duration::from_millis(500),
             config,
         };
         app.user_state.search_bar_text.reserve(200);
@@ -149,13 +149,13 @@ impl App {
 
     pub fn rebuild_directories(&mut self) {
         self.elements.clear();
-        self.elements = self.file_hierarchy.get_entries(
+        /*self.elements = self.file_hierarchy.get_entries(
             self.current_directory(),
             &self.user_state.search_bar_text,
             self.user_state.depth as u16,
             false,
-        );
-        self.user_state.cursor.select(Some(0));
+        );*/
+        //self.user_state.cursor.select(Some(0));
     }
 
     pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {
@@ -166,7 +166,7 @@ impl App {
 
     pub fn go_back_one_directory(&mut self) {
         self.user_state.current_dir.pop();
-        self.file_hierarchy.go_back();
+        //self.file_hierarchy.go_back();
         self.rebuild_directories();
     }
 

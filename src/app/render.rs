@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction::Vertical, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::{
@@ -36,7 +36,10 @@ impl Screen {
         Screen {
             constraints,
             top_bar: None,
-            main_box: EntryList::new().highlight_style(config.main_box.highlight_style),
+            main_box: EntryList::new()
+                .style(config.main_box.entry_style)
+                .highlight_style(config.main_box.highlight_style)
+                .highlight_symbol(config.main_box.focus_symbol.clone()),
             search_bar: None,
             tooltips: None,
         }
@@ -139,6 +142,14 @@ impl App {
         if let Some(widget) = &self.screen.top_bar {
             frame.render_widget(widget, area);
         }
+
+        self.screen.main_box.set_block(
+            self.config
+                .main_box
+                .block
+                .clone()
+                .title(format!("{} Entries", self.elements.len())),
+        );
 
         self.screen.main_box.render(
             &self.elements,

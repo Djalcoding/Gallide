@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{
         Block,
         HighlightSpacing::{self, Always, Never, WhenSelected},
-        List, ListItem, ListState, StatefulWidget, Widget,
+        ListState, Widget,
     },
 };
 
@@ -46,45 +46,6 @@ pub enum ListDirection {
 }
 
 impl<'a> EntryList<'a> {
-    /// Creates a new list from [`ListItem`]s
-    ///
-    /// The `items` parameter accepts any value that can be converted into an iterator of
-    /// [`Into<ListItem>`]. This includes arrays of [`&str`] or [`Vec`]s of [`Text`].
-    ///
-    /// # Example
-    ///
-    /// From a slice of [`&str`]
-    ///
-    /// ```
-    /// use ratatui::widgets::List;
-    ///
-    /// let list = List::new(["Item 1", "Item 2"]);
-    /// ```
-    ///
-    /// From [`Text`]
-    ///
-    /// ```
-    /// use ratatui::style::{Style, Stylize};
-    /// use ratatui::text::Text;
-    /// use ratatui::widgets::List;
-    ///
-    /// let list = List::new([
-    ///     Text::styled("Item 1", Style::new().red()),
-    ///     Text::styled("Item 2", Style::new().red()),
-    /// ]);
-    /// ```
-    ///
-    /// You can also create an empty list using the [`Default`] implementation and use the
-    /// [`List::items`] fluent setter.
-    ///
-    /// ```rust
-    /// use ratatui::widgets::List;
-    ///
-    /// let empty_list = List::default();
-    /// let filled_list = empty_list.items(["Item 1"]);
-    /// ```
-    ///
-    /// [`Text`]: ratatui_core::text::Text
     pub fn new() -> Self {
         Self {
             block: None,
@@ -98,195 +59,44 @@ impl<'a> EntryList<'a> {
         }
     }
 
-    /// Wraps the list with a custom [`Block`] widget.
-    ///
-    /// The `block` parameter holds the specified [`Block`] to be created around the [`List`]
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ratatui::widgets::{Block, List};
-    ///
-    /// let items = ["Item 1"];
-    /// let block = Block::bordered().title("List");
-    /// let list = List::new(items).block(block);
-    /// ```
-    #[must_use = "method moves the value of self and returns the modified value"]
-    pub fn block(mut self, block: Block<'a>) -> Self {
+    pub fn set_block(&mut self, block: Block<'a>) {
         self.block = Some(block);
-        self
     }
 
-    /// Sets the base style of the widget
-    ///
-    /// `style` accepts any type that is convertible to [`Style`] (e.g. [`Style`], [`Color`], or
-    /// your own type that implements [`Into<Style>`]).
-    ///
-    /// All text rendered by the widget will use this style, unless overridden by [`Block::style`],
-    /// [`ListItem::style`], or the styles of the [`ListItem`]'s content.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ratatui::style::{Style, Stylize};
-    /// use ratatui::widgets::List;
-    ///
-    /// let items = ["Item 1"];
-    /// let list = List::new(items).style(Style::new().red().italic());
-    /// ```
-    ///
-    /// `List` also implements the [`Styled`] trait, which means you can use style shorthands from
-    /// the [`Stylize`] trait to set the style of the widget more concisely.
-    ///
-    /// [`Stylize`]: ratatui_core::style::Stylize
-    ///
-    /// ```rust
-    /// use ratatui::style::Stylize;
-    /// use ratatui::widgets::List;
-    ///
-    /// let items = ["Item 1"];
-    /// let list = List::new(items).red().italic();
-    /// ```
-    ///
-    /// [`Color`]: ratatui_core::style::Color
     #[must_use = "method moves the value of self and returns the modified value"]
     pub fn style<S: Into<Style>>(mut self, style: S) -> Self {
         self.style = style.into();
         self
     }
 
-    /// Set the symbol to be displayed in front of the selected item
-    ///
-    /// By default there are no highlight symbol.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ratatui::widgets::List;
-    ///
-    /// let items = ["Item 1", "Item 2"];
-    /// let list = List::new(items).highlight_symbol(">>");
-    /// ```
-    #[must_use = "method moves the value of self and returns the modified value"]
     pub fn highlight_symbol<L: Into<Line<'a>>>(mut self, highlight_symbol: L) -> Self {
         self.highlight_symbol = Some(highlight_symbol.into());
         self
     }
 
-    /// Set the style of the selected item
-    ///
-    /// `style` accepts any type that is convertible to [`Style`] (e.g. [`Style`], [`Color`], or
-    /// your own type that implements [`Into<Style>`]).
-    ///
-    /// This style will be applied to the entire item, including the
-    /// [highlight symbol](List::highlight_symbol) if it is displayed, and will override any style
-    /// set on the item or on the individual cells.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ratatui::style::{Style, Stylize};
-    /// use ratatui::widgets::List;
-    ///
-    /// let items = ["Item 1", "Item 2"];
-    /// let list = List::new(items).highlight_style(Style::new().red().italic());
-    /// ```
-    ///
-    /// [`Color`]: ratatui_core::style::Color
     #[must_use = "method moves the value of self and returns the modified value"]
     pub fn highlight_style<S: Into<Style>>(mut self, style: S) -> Self {
         self.highlight_style = style.into();
         self
     }
 
-    /// Set whether to repeat the highlight symbol and style over selected multi-line items
-    ///
-    /// This is `false` by default.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    #[must_use = "method moves the value of self and returns the modified value"]
     pub const fn repeat_highlight_symbol(mut self, repeat: bool) -> Self {
         self.repeat_highlight_symbol = repeat;
         self
     }
 
-    /// Set when to show the highlight spacing
-    ///
-    /// The highlight spacing is the spacing that is allocated for the selection symbol (if enabled)
-    /// and is used to shift the list when an item is selected. This method allows you to configure
-    /// when this spacing is allocated.
-    ///
-    /// - [`HighlightSpacing::Always`] will always allocate the spacing, regardless of whether an
-    ///   item is selected or not. This means that the table will never change size, regardless of
-    ///   if an item is selected or not.
-    /// - [`HighlightSpacing::WhenSelected`] will only allocate the spacing if an item is selected.
-    ///   This means that the table will shift when an item is selected. This is the default setting
-    ///   for backwards compatibility, but it is recommended to use `HighlightSpacing::Always` for a
-    ///   better user experience.
-    /// - [`HighlightSpacing::Never`] will never allocate the spacing, regardless of whether an item
-    ///   is selected or not. This means that the highlight symbol will never be drawn.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use ratatui::widgets::{HighlightSpacing, List};
-    ///
-    /// let items = ["Item 1"];
-    /// let list = List::new(items).highlight_spacing(HighlightSpacing::Always);
-    /// ```
     #[must_use = "method moves the value of self and returns the modified value"]
     pub const fn highlight_spacing(mut self, value: HighlightSpacing) -> Self {
         self.highlight_spacing = value;
         self
     }
 
-    /// Defines the list direction (up or down)
-    ///
-    /// Defines if the `List` is displayed *top to bottom* (default) or *bottom to top*.
-    /// If there is too few items to fill the screen, the list will stick to the starting edge.
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Example
-    ///
-    /// Bottom to top
-    ///
-    /// ```rust
-    /// use ratatui::widgets::{List, ListDirection};
-    ///
-    /// let items = ["Item 1"];
-    /// let list = List::new(items).direction(ListDirection::BottomToTop);
-    /// ```
     #[must_use = "method moves the value of self and returns the modified value"]
     pub const fn direction(mut self, direction: ListDirection) -> Self {
         self.direction = direction;
         self
     }
 
-    /// Sets the number of items around the currently selected item that should be kept visible
-    ///
-    /// This is a fluent setter method which must be chained or used as it consumes self
-    ///
-    /// # Example
-    ///
-    /// A padding value of 1 will keep 1 item above and 1 item below visible if possible
-    ///
-    /// ```rust
-    /// use ratatui::widgets::List;
-    ///
-    /// let items = ["Item 1"];
-    /// let list = List::new(items).scroll_padding(1);
-    /// ```
     #[must_use = "method moves the value of self and returns the modified value"]
     pub const fn scroll_padding(mut self, padding: usize) -> Self {
         self.scroll_padding = padding;
@@ -327,10 +137,10 @@ impl EntryList<'_> {
             return;
         }
 
-        if items.is_empty() {
-            state.select(None);
-            return;
-        }
+        // if items.is_empty() {
+        //     state.select(None);
+        //     return;
+        // }
 
         let list_height = list_area.height as usize;
 
