@@ -178,12 +178,13 @@ pub mod hierarchy {
     impl FileHierarchy {
         pub fn get_entries(
             &self,
+            buffer: &mut GallideEntryVec,
             start: &SafeNode,
             query: &str,
             mut policy: EntryCreationPolicy,
             max_depth: usize,
-        ) -> GallideEntryVec {
-            let mut out: GallideEntryVec = GallideEntryVec::new();
+        ) {
+            buffer.clear();
             let mut queue: VecDeque<(SafeNode, bool)> =
                 VecDeque::with_capacity(PAGE_SIZE * max_depth);
             let start_path = start.path(); // cloning is better here
@@ -210,10 +211,10 @@ pub mod hierarchy {
                         let matches_query: bool =
                             parent_matches || child.filename_starts_with(query);
                         if matches_query && !policy.should_skip() {
-                            out.push_back(entry);
+                            buffer.push_back(entry);
                         }
                         policy.optional_skip();
-                        if policy.allow_early_exits() && out.full() {
+                        if policy.allow_early_exits() && buffer.full() {
                             break 'main_loop;
                         }
                         if child_reader.is_dir() {
@@ -223,7 +224,6 @@ pub mod hierarchy {
                 }
                 depth += 1;
             }
-            out
         }
 
         pub fn new() -> Result<Self> {
@@ -335,20 +335,21 @@ pub mod hierarchy {
             time::{Duration, Instant},
         };
 
-        use crate::explore::tree::hierarchy::{
-            EntryCreationPolicy::{Skip, Tail},
-            FileHierarchy,
+        use crate::explore::{
+            GallideEntryVec,
+            tree::hierarchy::{
+                EntryCreationPolicy::{Skip, Tail},
+                FileHierarchy,
+            },
         };
         #[test]
         fn make() {
             let mut file_hierarchy = FileHierarchy::new().unwrap();
             sleep(Duration::from_millis(1000));
             println!("Size {}", file_hierarchy.root.read().nested_entries());
-            for (idx, entry) in file_hierarchy
-                .get_entries(&file_hierarchy.root, "", Tail, 1000)
-                .into_iter()
-                .enumerate()
-            {
+            let mut buffer = GallideEntryVec::new();
+            file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, "", Tail, 1000);
+            for (idx, entry) in buffer.into_iter().enumerate() {
                 println!("{} ({}) {}", entry.entry_type, idx + 1, entry.name())
             }
             println!("Size {}", file_hierarchy.root.read().nested_entries());
