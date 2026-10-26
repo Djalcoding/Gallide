@@ -1,15 +1,14 @@
 pub mod user_input;
 
-use ratatui::widgets::ListState;
-
 use crate::{
     app::render::Screen,
     config::Config,
     explore::{
-        EntryType, GallideEntry, GallideEntryVec, build_entry_list, tree::hierarchy::FileHierarchy,
+        EntryType, GallideEntry, GallideEntryVec,
+        tree::hierarchy::{FileHierarchy, SafeNode},
     },
 };
-use std::{path::{Path, PathBuf}, time::{Duration, Instant}};
+use std::{path::PathBuf, time::Instant};
 
 mod render;
 mod runtime;
@@ -27,41 +26,44 @@ pub struct UserState {
     depth: u8,
     search_bar_text: String,
     question_box_text: String,
-    cursor: ListState,
-    current_dir: PathBuf,
+    cursor: usize,
     mode: Mode,
 }
 
 pub struct App {
     screen: Screen,
-    elements: GallideEntryVec,
     file_hierarchy: FileHierarchy,
     user_state: UserState,
+    curr_node: SafeNode,
+    curr_list: GallideEntryVec,
     config: Config,
     running: bool,
     exited: bool,
-    next_update: Instant
+    next_update: Instant,
 }
 
 impl App {
+    pub const fn page_size(&self) -> usize {
+        1000
+    }
     pub fn new(config: Config) -> Self {
-        let start = Path::new(".").canonicalize().unwrap();
+        let file_hierarchy = FileHierarchy::new().unwrap(); // This starts a worker thread
         let mut app = App {
-            file_hierarchy: FileHierarchy::new().unwrap(), // This starts a worker thread
             user_state: UserState {
-                cursor: ListState::default().with_selected(Some(0)),
+                cursor: 0,
                 jump_buffer: 0,
                 depth: config.main_box.default_depth,
                 search_bar_text: String::new(),
                 mode: Mode::SELECTING,
-                current_dir: start,
                 question_box_text: String::new(),
             },
+            curr_node: file_hierarchy.root.clone(),
+            curr_list: GallideEntryVec::new(),
+            file_hierarchy,
             running: true,
             exited: true,
-            elements: GallideEntryVec::new(),
             screen: Screen::start(&config),
-            next_update: Instant::now() + Duration::from_millis(500),
+            next_update: Instant::now(),
             config,
         };
         app.user_state.search_bar_text.reserve(200);
@@ -72,27 +74,19 @@ impl App {
             .build_search_bar(false, String::new(), &app.config.search_bar);
         app.screen
             .build_tooltips(&app.config.tooltips, app.config.main_box.entry_style);
-
-        if app.elements.len() > 1 {
-            app.user_state.cursor.select(Some(1));
-        }
         app
     }
 
-    pub fn cursor(&self) -> usize {
-        self.user_state.cursor.selected().unwrap_or(0)
+    pub fn selected_index(&self) -> usize {
+        self.user_state.cursor % self.page_size()
     }
 
-    pub fn current_directory(&self) -> &Path {
-        &self.user_state.current_dir
+    pub fn current_directory(&self) -> PathBuf {
+        self.curr_node.path().to_path_buf()
     }
 
     pub fn selected_entry(&self) -> &GallideEntry {
-        &self.elements[self.cursor()]
-    }
-
-    pub fn selected_path(&self) -> &Path {
-        self.selected_entry().path()
+        &self.curr_list[self.selected_index()]
     }
 
     pub fn is_running(&self) -> bool {
@@ -115,25 +109,22 @@ impl App {
     }
 
     pub fn move_down(&mut self) {
-        if self.user_state.cursor.selected().unwrap() == self.elements.len() - 1 {
-            self.user_state.cursor.select_first();
-            return;
+        self.user_state.cursor += 1;
+        if self.user_state.cursor != 0
+            && self.user_state.cursor.is_multiple_of(self.page_size())
+            && !self.rebuild_directories()
+            || self.selected_index() >= self.curr_list.len()
+        {
+            self.user_state.cursor = 0;
+            self.rebuild_directories();
         }
-        self.user_state.cursor
-            .scroll_down_by(std::cmp::max(1, self.user_state.jump_buffer));
-        if self.user_state.cursor.selected().unwrap() >= self.elements.len() {
-            self.user_state.cursor.select(Some(self.elements.len() - 1));
-        }
-        self.user_state.jump_buffer = 0;
     }
 
     pub fn move_up(&mut self) {
-        if self.user_state.cursor.selected().unwrap() == 0 {
-            self.user_state.cursor.select(Some(self.elements.len() - 1));
-            return;
+        self.user_state.cursor -= 1;
+        if self.user_state.cursor != 0 && self.user_state.cursor.is_multiple_of(self.page_size()) {
+            self.rebuild_directories();
         }
-        self.user_state.cursor.scroll_up_by(std::cmp::max(1, self.user_state.jump_buffer));
-        self.user_state.jump_buffer = 0;
     }
 
     pub fn increase_depth(&mut self) {
@@ -147,26 +138,24 @@ impl App {
         self.rebuild_directories();
     }
 
-    pub fn rebuild_directories(&mut self) {
-        self.elements.clear();
-        /*self.elements = self.file_hierarchy.get_entries(
-            self.current_directory(),
-            &self.user_state.search_bar_text,
-            self.user_state.depth as u16,
-            false,
+    ///Returns {true} if there are directories to build
+    pub fn rebuild_directories(&mut self) -> bool {
+        /*self.curr_list = self.file_hierarchy.get_entries(
+            &self.curr_node,
+            "",
+            (self.user_state.cursor / self.page_size()) * self.page_size(),
+            self.user_state.depth as usize,
         );*/
-        //self.user_state.cursor.select(Some(0));
-    }
 
-    pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {
-        let previous_directory = self.elements.pop_front().unwrap();
-        self.elements.push_front(entry);
-        self.elements.push_front(previous_directory);
+        !self.curr_list.is_empty()
     }
 
     pub fn go_back_one_directory(&mut self) {
-        self.user_state.current_dir.pop();
-        //self.file_hierarchy.go_back();
+        self.file_hierarchy.step_back();
+        let parent = self.curr_node.read().parent.clone();
+        if let Some(dad) = parent {
+            self.curr_node = dad.upgrade().unwrap(); // TODO : check this
+        }
         self.rebuild_directories();
     }
 
@@ -183,8 +172,11 @@ impl App {
     }
 
     fn rebuild_searchbar(&mut self) {
-        self.screen
-            .build_search_bar(true, self.user_state.search_bar_text.clone(), &self.config.search_bar);
+        self.screen.build_search_bar(
+            true,
+            self.user_state.search_bar_text.clone(),
+            &self.config.search_bar,
+        );
     }
 
     pub fn stop(&mut self) {
@@ -209,9 +201,8 @@ impl App {
             self.stop();
             return;
         }
-        self.user_state.current_dir = self.selected_path().to_path_buf();
         self.user_state.search_bar_text.clear();
-        self.user_state.cursor.select_first();
+        self.user_state.cursor = 0;
     }
     pub fn get_bash_string(&self) -> String {
         format!(
@@ -222,11 +213,14 @@ impl App {
                 "F"
             },
             if self.exited {
-                &self.user_state.current_dir
+                self.current_directory()
             } else {
-                self.selected_path()
+                self.curr_list[self.user_state.cursor]
+                    .node
+                    .path()
+                    .to_path_buf()
             }
-            .display()
+            .to_string_lossy()
         )
     }
 }

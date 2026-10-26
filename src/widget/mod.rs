@@ -5,8 +5,8 @@ use ratatui::{
     text::{Line, ToLine},
     widgets::{
         Block,
-        HighlightSpacing::{self, Always, Never, WhenSelected},
-        ListState, Widget,
+        HighlightSpacing::{self},
+        Widget,
     },
 };
 
@@ -16,8 +16,6 @@ pub struct EntryList<'a> {
     pub(crate) block: Option<Block<'a>>,
     /// Style used as a base style for the widget
     pub(crate) style: Style,
-    /// List display direction
-    pub(crate) direction: ListDirection,
     /// Style used to render selected item
     pub(crate) highlight_style: Style,
     /// Symbol in front of the selected item (Shift all items to the right)
@@ -30,27 +28,11 @@ pub struct EntryList<'a> {
     pub(crate) scroll_padding: usize,
 }
 
-/// Defines the direction in which the list will be rendered.
-///
-/// If there are too few items to fill the screen, the list will stick to the starting edge.
-///
-/// See [`List::direction`].
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ListDirection {
-    /// The first value is on the top, going to the bottom
-    #[default]
-    TopToBottom,
-    /// The first value is on the bottom, going to the top.
-    BottomToTop,
-}
-
 impl<'a> EntryList<'a> {
     pub fn new() -> Self {
         Self {
             block: None,
             style: Style::default(),
-            direction: ListDirection::default(),
             highlight_style: Style::default(),
             highlight_symbol: None,
             repeat_highlight_symbol: false,
@@ -92,12 +74,6 @@ impl<'a> EntryList<'a> {
     }
 
     #[must_use = "method moves the value of self and returns the modified value"]
-    pub const fn direction(mut self, direction: ListDirection) -> Self {
-        self.direction = direction;
-        self
-    }
-
-    #[must_use = "method moves the value of self and returns the modified value"]
     pub const fn scroll_padding(mut self, padding: usize) -> Self {
         self.scroll_padding = padding;
         self
@@ -117,13 +93,7 @@ impl Styled for EntryList<'_> {
 }
 
 impl EntryList<'_> {
-    pub fn render(
-        &self,
-        items: &GallideEntryVec,
-        area: Rect,
-        buf: &mut Buffer,
-        state: &mut ListState,
-    ) {
+    pub fn render(&self, items: &GallideEntryVec, area: Rect, buf: &mut Buffer, cursor: usize) {
         buf.set_style(area, self.style);
         self.block.as_ref().render(area, buf);
         let list_area;
@@ -137,18 +107,10 @@ impl EntryList<'_> {
             return;
         }
 
-        // if items.is_empty() {
-        //     state.select(None);
-        //     return;
-        // }
-
         let list_height = list_area.height as usize;
 
         let (first_visible_index, last_visible_index) =
-            self.get_items_bounds(items, state.selected(), state.offset(), list_height);
-
-        // Important: this changes the state's offset to be the beginning of the now viewable items
-        *state.offset_mut() = first_visible_index;
+            self.get_items_bounds(items, Some(cursor), 0, list_height);
 
         // Get our set highlighted symbol (if one was set)
         let default_highlight_symbol = Line::default();
@@ -160,68 +122,42 @@ impl EntryList<'_> {
         let empty_symbol = " ".repeat(highlight_symbol_width as usize);
         let empty_symbol = empty_symbol.to_line();
 
-        let mut current_height = 0;
-        let selection_spacing: bool = match self.highlight_spacing {
-            Always => true,
-            WhenSelected => state.selected().is_some(),
-            Never => false,
-        };
-        for (i, item) in items
-            .iter()
-            .enumerate()
-            .skip(state.offset())
-            .take(last_visible_index - first_visible_index)
-        {
-            let (x, y) = if self.direction == ListDirection::BottomToTop {
-                current_height += 1u16;
-                (list_area.left(), list_area.bottom() - current_height)
+        for (current_height, (i, item)) in (0_u16..).zip(
+            items
+                .into_iter()
+                .enumerate()
+                .skip(first_visible_index)
+                .take(last_visible_index - first_visible_index),
+        ) {
+            let (x, y) = (list_area.left(), list_area.top() + current_height);
+
+            let row_area = Rect::new(x, y, list_area.width, 1);
+
+            let is_selected = i == cursor;
+            let item_style = if is_selected {
+                self.highlight_style
             } else {
-                let pos = (list_area.left(), list_area.top() + current_height);
-                current_height += 1u16;
-                pos
+                self.style
             };
-
-            let row_area = Rect::new(x, y, list_area.width, 1u16);
-
-            let item_style = self.style;
             buf.set_style(row_area, item_style);
 
-            let is_selected = state.selected() == Some(i);
-
-            let item_area = if selection_spacing {
-                Rect {
-                    x: row_area.x + highlight_symbol_width,
-                    width: row_area.width.saturating_sub(highlight_symbol_width),
-                    ..row_area
-                }
-            } else {
-                row_area
+            let item_area = Rect {
+                x: row_area.x + highlight_symbol_width,
+                width: row_area.width.saturating_sub(highlight_symbol_width),
+                ..row_area
             };
             Widget::render(item.name().clone(), item_area, buf);
 
-            if is_selected {
-                buf.set_style(row_area, self.highlight_style);
-            }
-            if selection_spacing {
-                for j in 0..1 {
-                    // if the item is selected, we need to display the highlight symbol:
-                    // - either for the first line of the item only,
-                    // - or for each line of the item if the appropriate option is set
-                    let line = if is_selected && (j == 0 || self.repeat_highlight_symbol) {
-                        highlight_symbol
-                    } else {
-                        &empty_symbol
-                    };
-                    let highlight_area = Rect::new(x, y + j as u16, highlight_symbol_width, 1);
-                    line.render(highlight_area, buf);
-                }
-            }
+            let line = if is_selected {
+                highlight_symbol
+            } else {
+                &empty_symbol
+            };
+            let highlight_area = Rect::new(x, y, highlight_symbol_width, 1);
+            line.render(highlight_area, buf);
         }
     }
-}
 
-impl EntryList<'_> {
-    /// Given an offset, calculate which items can fit in a given area
     fn get_items_bounds(
         &self,
         items: &GallideEntryVec,
@@ -240,7 +176,7 @@ impl EntryList<'_> {
 
         // Calculate the last visible index and total height of the items
         // that will fit in the available space
-        for item in items.iter().skip(offset) {
+        for _ in items.into_iter().skip(offset) {
             if height_from_offset + 1 > max_height {
                 break;
             }
@@ -322,7 +258,7 @@ impl EntryList<'_> {
         let mut scroll_padding = self.scroll_padding;
         while scroll_padding > 0 {
             let mut height_around_selected = 0;
-            for index in selected.saturating_sub(scroll_padding)
+            for _ in selected.saturating_sub(scroll_padding)
                 ..=selected
                     .saturating_add(scroll_padding)
                     .min(last_valid_index)
@@ -346,4 +282,10 @@ impl EntryList<'_> {
             .min(last_valid_index),
         )
     }
+}
+
+impl Default for  EntryList<'_>{
+    fn default() -> Self {
+        EntryList::new()
+    } 
 }

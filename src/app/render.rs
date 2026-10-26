@@ -148,14 +148,13 @@ impl App {
                 .main_box
                 .block
                 .clone()
-                .title(format!("{} Entries", self.elements.len())),
+                .title(format!("{} Entries", -1)),
         );
-
         self.screen.main_box.render(
-            &self.elements,
+            &self.curr_list,
             *chunk_iter.next().unwrap(),
             frame.buffer_mut(),
-            &mut self.user_state.cursor,
+            self.selected_index()
         );
         if let Some(widget) = &self.screen.search_bar {
             frame.render_widget(widget, *chunk_iter.next().unwrap());

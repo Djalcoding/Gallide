@@ -104,7 +104,7 @@ impl App {
         while self.is_running() {
             if Instant::now() > self.next_update  {
                 self.rebuild_directories();
-                self.next_update = Instant::now() + Duration::from_millis(500);
+                self.next_update = Instant::now() + Duration::from_millis(100);
             }
             terminal.draw(|frame| self.render(frame))?;
             if event::poll(Duration::from_millis(50))?

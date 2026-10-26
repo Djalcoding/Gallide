@@ -1,20 +1,11 @@
-use std::{
-    cmp::Ordering::{Greater, Less},
-    collections::VecDeque,
-    fmt::Display,
-    io::Error,
-    path::{Path, PathBuf},
-};
+use std::{fmt::Display};
 
-use ratatui::{
-    text::{Line, Span},
-    widgets::List,
-};
-use walkdir::{DirEntry, WalkDir};
-
-use crate::config::MainBoxConfig;
+use crate::explore::{
+        EntryType::{File, Folder}, ringbuffer::RingBuffer, tree::hierarchy::SafeNode,
+    };
 
 pub mod tree;
+pub mod ringbuffer;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
@@ -23,13 +14,14 @@ pub enum EntryType {
     SpecialSign,
 }
 
-pub struct GallideEntry {
-    path: PathBuf,
-    name: String,
-    pub entry_type: EntryType,
-    size: Option<u64>,
+impl EntryType {
+    fn from_is_dir(is_dir: bool) -> EntryType {
+        match is_dir {
+            true => Folder,
+            false => File,
+        }
+    }
 }
-
 impl Display for EntryType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -39,126 +31,25 @@ impl Display for EntryType {
         }
     }
 }
-pub type GallideEntryVec = VecDeque<GallideEntry>;
+
+pub struct GallideEntry {
+    pub node: SafeNode,
+    display_name: String,
+    pub entry_type: EntryType,
+}
+pub const PAGE_SIZE:usize = 1000;
+pub type GallideEntryVec = RingBuffer<GallideEntry, PAGE_SIZE>;
 
 impl GallideEntry {
-    pub fn new(path: PathBuf, name: String, entry_type: EntryType, size: Option<u64>) -> Self {
+    pub fn new(node: SafeNode, display_name: String, entry_type: EntryType) -> Self {
         GallideEntry {
-            path,
-            name,
+            node,
+            display_name,
             entry_type,
-            size,
         }
     }
     pub fn set_type(&mut self) {}
-    pub fn path(&self) -> &PathBuf {
-        &self.path
-    }
     pub fn name(&self) -> &String {
-        &self.name
+        &self.display_name
     }
-    pub fn size(&self) -> Option<u64> {
-        self.size
-    }
-
-    pub(crate) fn to_line(&self, highlight_length: u16, config: &MainBoxConfig) -> Line<'static> {
-        let symbol = match self.entry_type {
-            EntryType::File => config.file_symbol.clone(),
-            EntryType::Folder => config.folder_symbol.clone(),
-            _ => Span::from(""),
-        };
-        let (highlight, rest) = self.name.split_at(highlight_length as usize);
-
-        let highlight = Span::styled(
-            String::from(highlight),
-            config
-                .entry_style
-                .to_owned()
-                .fg(ratatui::style::Color::Green),
-        ); // TODO : color
-        let text = Span::styled(String::from(rest), config.entry_style.to_owned());
-
-        Line::from(vec![symbol, highlight, text])
-    }
-}
-
-fn cmp_entries(a: &DirEntry, b: &DirEntry) -> std::cmp::Ordering {
-    let a_meta = a.metadata().unwrap(); // TODO : hash this
-    let b_meta = b.metadata().unwrap();
-    let a_name = a.file_name().to_string_lossy();
-    let b_name = b.file_name().to_string_lossy();
-    match (a_meta.is_dir(), b_meta.is_dir()) {
-        (true, false) => return Less,
-        (false, true) => return Greater,
-        _ => {}
-    }
-    match (a_name.starts_with('.'), b_name.starts_with('.')) {
-        (false, true) => return Less,
-        (true, false) => return Greater,
-        _ => {}
-    }
-    a_name
-        .to_lowercase()
-        .cmp(&b_name.to_lowercase())
-        .then_with(|| a_name.cmp(&b_name))
-}
-
-pub fn get_folder_contents(current_folder: &Path, depth: u8) -> Result<GallideEntryVec, Error> {
-    let mut entries: GallideEntryVec = GallideEntryVec::new();
-    entries.reserve(300);
-    let mut previous_folder: PathBuf = current_folder.to_path_buf();
-    previous_folder.pop();
-    for element in WalkDir::new(current_folder)
-        .max_depth(depth as usize)
-        .sort_by(cmp_entries)
-        .into_iter()
-        .flatten()
-    {
-        let metadata = element.metadata()?;
-        let path = element.path();
-        let name = path.strip_prefix(current_folder).unwrap().to_string_lossy(); // TODO : Candy
-        if name.is_empty() {
-            continue;
-        }
-        entries.push_back(GallideEntry::new(
-            path.to_path_buf(),
-            name.to_string(),
-            if metadata.is_file() {
-                EntryType::File
-            } else {
-                EntryType::Folder
-            },
-            None,
-        ))
-    }
-    entries.push_front(GallideEntry::new(
-        previous_folder,
-        String::from(".."),
-        EntryType::SpecialSign,
-        None,
-    ));
-    Ok(entries)
-}
-
-pub fn build_entry_list(
-    entries: &GallideEntryVec,
-    highlights: Vec<u16>,
-    config: &MainBoxConfig,
-) -> List<'static> {
-    let list_items = entries
-        .iter()
-        .enumerate()
-        .map(|(i, entry)| entry.to_line(0, config))
-        .collect::<Vec<Line>>();
-
-    List::new(list_items)
-        .block(
-            config
-                .block
-                .clone()
-                .title(format!(" {} Entries ", entries.len())),
-        )
-        .style(config.entry_style)
-        .highlight_style(config.highlight_style)
-        .highlight_symbol(config.focus_symbol.clone())
 }
