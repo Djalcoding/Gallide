@@ -124,7 +124,7 @@ impl EntryList<'_> {
 
         for (current_height, (i, item)) in (0_u16..).zip(
             items
-                .into_iter()
+                .iter()
                 .enumerate()
                 .skip(first_visible_index)
                 .take(last_visible_index - first_visible_index),
@@ -146,7 +146,7 @@ impl EntryList<'_> {
                 width: row_area.width.saturating_sub(highlight_symbol_width),
                 ..row_area
             };
-            Widget::render(item.name().clone(), item_area, buf);
+            Widget::render(item.display().clone(), item_area, buf);
 
             let line = if is_selected {
                 highlight_symbol
@@ -176,7 +176,7 @@ impl EntryList<'_> {
 
         // Calculate the last visible index and total height of the items
         // that will fit in the available space
-        for _ in items.into_iter().skip(offset) {
+        for _ in items.iter().skip(offset) {
             if height_from_offset + 1 > max_height {
                 break;
             }

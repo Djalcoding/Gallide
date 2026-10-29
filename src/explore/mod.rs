@@ -1,11 +1,14 @@
-use std::{fmt::Display};
+use std::{fmt::Display, sync::Arc};
+
+use ratatui::text::Line;
 
 use crate::explore::{
-        EntryType::{File, Folder}, ringbuffer::RingBuffer, tree::hierarchy::SafeNode,
-    };
+    EntryType::{File, Folder},
+    tree::hierarchy::SafeNode,
+};
 
-pub mod tree;
 pub mod ringbuffer;
+pub mod tree;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
@@ -34,22 +37,35 @@ impl Display for EntryType {
 
 pub struct GallideEntry {
     pub node: SafeNode,
-    display_name: String,
+    display: Line<'static>,
     pub entry_type: EntryType,
 }
-pub const PAGE_SIZE:usize = 1000;
-pub type GallideEntryVec = RingBuffer<GallideEntry, PAGE_SIZE>;
+pub const PAGE_SIZE: usize = 1000;
+pub type GallideEntryVec = Vec<GallideEntry>;
 
 impl GallideEntry {
-    pub fn new(node: SafeNode, display_name: String, entry_type: EntryType) -> Self {
+    pub fn previous_directory(start:&SafeNode) -> Self {
+        GallideEntry {
+            node: start
+                .read()
+                .parent
+                .clone()
+                .unwrap_or(Arc::downgrade(start))
+                .upgrade()
+                .unwrap(),
+            display: Line::from(".."),
+            entry_type: EntryType::SpecialSign,
+        }
+    }
+    pub fn new(node: SafeNode, display: Line<'static>, entry_type: EntryType) -> Self {
         GallideEntry {
             node,
-            display_name,
+            display,
             entry_type,
         }
     }
     pub fn set_type(&mut self) {}
-    pub fn name(&self) -> &String {
-        &self.display_name
+    pub fn display(&self) -> &Line<'static> {
+        &self.display
     }
 }

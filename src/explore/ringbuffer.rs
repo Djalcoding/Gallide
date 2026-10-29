@@ -26,6 +26,10 @@ impl<T, const N: usize> RingBuffer<T, N> {
         self.size
     }
 
+    pub fn iter<'a>(&'a self) -> RingBufferIterator<'a, T, N> {
+        self.into_iter()
+    }
+
     pub const fn capacity(&self) -> usize {
         N
     }
@@ -49,7 +53,7 @@ impl<T, const N: usize> RingBuffer<T, N> {
     }
 
     fn get_index(&self, idx: usize) -> usize {
-        if self.is_empty(){ 0 } else { idx % self.len() }
+        if self.is_empty() { 0 } else { idx % self.len() }
     }
 }
 

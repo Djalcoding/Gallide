@@ -44,6 +44,7 @@ impl Screen {
             tooltips: None,
         }
     }
+
     pub fn build_top_bar(
         &mut self,
         area: &Rect,
@@ -143,21 +144,28 @@ impl App {
             frame.render_widget(widget, area);
         }
 
-        self.screen.main_box.set_block(
-            self.config
-                .main_box
-                .block
-                .clone()
-                .title(format!("{} Entries", -1)),
-        );
+        self.screen
+            .main_box
+            .set_block(
+                self.config.main_box.block.clone().title(format!(
+                    "{} Entries",
+                    self.curr_node
+                        .read()
+                        .get_nested_entries(self.user_state.depth as usize) -1 
+                )),
+            );
         self.screen.main_box.render(
             &self.curr_list,
             *chunk_iter.next().unwrap(),
             frame.buffer_mut(),
-            self.selected_index()
+            self.selected_index(),
         );
         if let Some(widget) = &self.screen.search_bar {
-            frame.render_widget(widget, *chunk_iter.next().unwrap());
+            let area = *chunk_iter.next().unwrap();
+            frame.render_widget(widget, area);
+            if self.is_inserting() {
+                frame.set_cursor_position((area.x + 1 + self.user_state.search_bar_text.len() as u16,area.y + 1));
+            }
         }
         if let Some(widget) = &self.screen.tooltips {
             frame.render_widget(widget, *chunk_iter.next().unwrap());

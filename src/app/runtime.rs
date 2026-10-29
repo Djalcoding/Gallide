@@ -33,7 +33,6 @@ impl App {
                     self.toggle_insert_mode()
                 }
             }
-            KeyCode::Char('c') => self.user_state.search_bar_text.clear(),
             KeyCode::Char('a') => {
                 //self.ask_input(create_ressource_request());
             }
@@ -52,8 +51,9 @@ impl App {
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 self.user_state.jump_buffer = self.user_state.jump_buffer.saturating_mul(10);
                 self.user_state.jump_buffer = self
-                    .user_state.jump_buffer
-                    .saturating_add(c.to_digit(10).unwrap() as u16)
+                    .user_state
+                    .jump_buffer
+                    .saturating_add(c.to_digit(10).unwrap() as usize)
             }
             _ => {}
         }
@@ -102,8 +102,10 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         while self.is_running() {
-            if Instant::now() > self.next_update  {
-                self.rebuild_directories();
+            if Instant::now() > self.next_update {
+                if self.available_entries() != self.prev_entry_count {
+                    self.rebuild_directories();
+                }
                 self.next_update = Instant::now() + Duration::from_millis(100);
             }
             terminal.draw(|frame| self.render(frame))?;

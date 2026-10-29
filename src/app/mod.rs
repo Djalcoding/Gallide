@@ -4,8 +4,8 @@ use crate::{
     app::render::Screen,
     config::Config,
     explore::{
-        EntryType, GallideEntry, GallideEntryVec,
-        tree::hierarchy::{FileHierarchy, SafeNode},
+        EntryType, GallideEntry, GallideEntryVec, PAGE_SIZE,
+        tree::hierarchy::{EntryListConfiguration, FileHierarchy, SafeNode},
     },
 };
 use std::{path::PathBuf, time::Instant};
@@ -22,7 +22,7 @@ pub enum Mode {
 }
 
 pub struct UserState {
-    jump_buffer: u16,
+    jump_buffer: usize,
     depth: u8,
     search_bar_text: String,
     question_box_text: String,
@@ -40,11 +40,12 @@ pub struct App {
     running: bool,
     exited: bool,
     next_update: Instant,
+    prev_entry_count: usize,
 }
 
 impl App {
     pub const fn page_size(&self) -> usize {
-        1000
+        PAGE_SIZE
     }
     pub fn new(config: Config) -> Self {
         let file_hierarchy = FileHierarchy::new().unwrap(); // This starts a worker thread
@@ -58,12 +59,15 @@ impl App {
                 question_box_text: String::new(),
             },
             curr_node: file_hierarchy.root.clone(),
-            curr_list: GallideEntryVec::new(),
+            curr_list: GallideEntryVec::from([GallideEntry::previous_directory(
+                &file_hierarchy.root,
+            )]),
             file_hierarchy,
             running: true,
-            exited: true,
+            exited: false,
             screen: Screen::start(&config),
             next_update: Instant::now(),
+            prev_entry_count: 0,
             config,
         };
         app.user_state.search_bar_text.reserve(200);
@@ -108,21 +112,36 @@ impl App {
         matches!(self.selected_entry().entry_type, EntryType::Folder)
     }
 
+    // TODO move this and else to UserState
     pub fn move_down(&mut self) {
-        self.user_state.cursor += 1;
-        if self.user_state.cursor != 0
-            && self.user_state.cursor.is_multiple_of(self.page_size())
-            && !self.rebuild_directories()
-            || self.selected_index() >= self.curr_list.len()
-        {
-            self.user_state.cursor = 0;
+        let (page_start, page_end) = self.get_page_bounds();
+        let at_end: bool = self.user_state.cursor == self.available_entries() - 1;
+        self.user_state.cursor += std::cmp::max(1, self.user_state.jump_buffer);
+        self.user_state.jump_buffer = 0;
+        if self.user_state.cursor >= self.available_entries() {
+            if at_end {
+                self.user_state.cursor = 0;
+            } else {
+                self.user_state.cursor = self.available_entries() - 1;
+            }
+        }
+        if self.user_state.cursor < page_start || self.user_state.cursor >= page_end {
             self.rebuild_directories();
         }
     }
 
     pub fn move_up(&mut self) {
-        self.user_state.cursor -= 1;
-        if self.user_state.cursor != 0 && self.user_state.cursor.is_multiple_of(self.page_size()) {
+        let (page_start, page_end) = self.get_page_bounds();
+        if self.user_state.cursor == 0 {
+            self.user_state.cursor = self.available_entries();
+            self.user_state.jump_buffer = 1;
+        }
+        self.user_state.cursor = self
+            .user_state
+            .cursor
+            .saturating_sub(std::cmp::max(1, self.user_state.jump_buffer));
+        self.user_state.jump_buffer = 0;
+        if self.user_state.cursor < page_start || self.user_state.cursor >= page_end {
             self.rebuild_directories();
         }
     }
@@ -138,24 +157,49 @@ impl App {
         self.rebuild_directories();
     }
 
-    ///Returns {true} if there are directories to build
-    pub fn rebuild_directories(&mut self) -> bool {
-        /*self.curr_list = self.file_hierarchy.get_entries(
-            &self.curr_node,
-            "",
-            (self.user_state.cursor / self.page_size()) * self.page_size(),
-            self.user_state.depth as usize,
-        );*/
+    fn get_page_bounds(&self) -> (usize, usize) {
+        let start = (self.user_state.cursor / self.page_size()) * self.page_size();
+        (start, start + PAGE_SIZE)
+    }
 
-        !self.curr_list.is_empty()
+    ///Returns {true} if there are directories to build
+    pub fn rebuild_directories(&mut self) {
+        let (page_start, _) = self.get_page_bounds();
+        let config = EntryListConfiguration {
+            whitelist: &self.user_state.search_bar_text,
+            max_size: PAGE_SIZE,
+            max_depth: self.user_state.depth as usize,
+            skips: page_start,
+        };
+        let selected_node = self.selected_entry().node.clone();
+        let potential_cursor_position = self.file_hierarchy.get_entries(
+            &mut self.curr_list,
+            &self.curr_node,
+            selected_node,
+            config,
+        );
+        self.user_state.cursor = if let Some(position) = potential_cursor_position {
+            page_start + position
+        } else {
+            if self.curr_list.len() == 1 { 0 } else { 1 }
+        };
+        self.prev_entry_count = self.available_entries();
+    }
+
+    pub fn available_entries(&self) -> usize {
+        // check if I can use my variable
+        self.curr_node
+            .read()
+            .get_nested_entries(self.user_state.depth as usize)
     }
 
     pub fn go_back_one_directory(&mut self) {
-        self.file_hierarchy.step_back();
-        let parent = self.curr_node.read().parent.clone();
-        if let Some(dad) = parent {
-            self.curr_node = dad.upgrade().unwrap(); // TODO : check this
-        }
+        let weak_parent = self.curr_node.read().parent.clone();
+        let new_root = match weak_parent {
+            Some(node) => node.upgrade().unwrap().clone(),
+            None => self.file_hierarchy.step_back(),
+        };
+        self.curr_node = new_root;
         self.rebuild_directories();
     }
 
@@ -202,7 +246,9 @@ impl App {
             return;
         }
         self.user_state.search_bar_text.clear();
+        self.curr_node = self.selected_entry().node.clone();
         self.user_state.cursor = 0;
+        self.rebuild_directories();
     }
     pub fn get_bash_string(&self) -> String {
         format!(

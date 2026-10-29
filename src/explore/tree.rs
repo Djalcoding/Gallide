@@ -23,9 +23,14 @@ pub mod hierarchy {
         time::Duration,
     };
 
+    use ratatui::{
+        style::{Style, Styled},
+        text::{Line, Span},
+    };
+
     use crate::explore::{
-        EntryType, GallideEntry, GallideEntryVec, PAGE_SIZE,
-        tree::hierarchy::{self, EntryCreationPolicy::Skip},
+        EntryType, GallideEntry, GallideEntryVec,
+        tree::hierarchy::{self},
     };
 
     pub struct Node {
@@ -116,6 +121,14 @@ pub mod hierarchy {
             file_name.to_str().unwrap().starts_with(query)
         }
 
+        fn filename_index(&self) -> usize {
+            self.path().as_os_str().len()
+                - match self.path().file_name() {
+                    Some(l) => l.len(),
+                    None => 0,
+                }
+        }
+
         pub(crate) fn update_parents(&self) {
             let mut target = self.read().parent.clone();
 
@@ -125,11 +138,13 @@ pub mod hierarchy {
                 1
             };
             self.write().depths[1] = children_count;
-            let mut depth = 1;
+            let mut depth = 2;
             while let Some(ref parent_node) = target {
-                let parent_node = parent_node.upgrade().unwrap();
+                let Some(parent_node) = parent_node.upgrade() else {
+                    continue;
+                };
                 if parent_node.read().depths.len() <= depth {
-                    parent_node.write().depths.push(children_count + 1);
+                    parent_node.write().depths.push(children_count);
                 } else {
                     parent_node.write().depths[depth] += children_count;
                 }
@@ -144,34 +159,22 @@ pub mod hierarchy {
     type WeakSafeNode = Weak<TreeNode>;
 
     pub struct FileHierarchy {
+        // TODO private
         pub root: SafeNode,
         pub prev_root: SafeNode,
         pub sender: Sender<SafeNode>,
     }
 
-    #[derive(Clone, Copy)]
-    pub enum EntryCreationPolicy {
-        Skip(usize),
-        Tail,
+    pub struct EntryListConfiguration<'a> {
+        pub whitelist: &'a str,
+        pub max_size: usize,
+        pub skips: usize,
+        pub max_depth: usize,
     }
 
-    impl EntryCreationPolicy {
-        pub(crate) fn should_skip(&self) -> bool {
-            match self {
-                Self::Tail => false,
-                Self::Skip(skips_left) => *skips_left != 0,
-            }
-        }
-
-        pub(crate) fn optional_skip(&self) -> Self {
-            match self {
-                Self::Tail => Self::Tail,
-                Self::Skip(skips_left) => Self::Skip(skips_left.saturating_sub(1)),
-            }
-        }
-
-        pub(crate) fn allow_early_exits(&self) -> bool {
-            !matches!(self, Self::Tail)
+    impl EntryListConfiguration<'_> {
+        pub(crate) fn get_ideal_queue_length(&self) -> usize {
+            self.max_size * self.max_depth * 100
         }
     }
 
@@ -180,50 +183,83 @@ pub mod hierarchy {
             &self,
             buffer: &mut GallideEntryVec,
             start: &SafeNode,
-            query: &str,
-            mut policy: EntryCreationPolicy,
-            max_depth: usize,
-        ) {
+            monitored_node: SafeNode,
+            mut config: EntryListConfiguration,
+        )->Option<usize>{
+            let mut cursor_location:Option<usize> = None;
             buffer.clear();
-            let mut queue: VecDeque<(SafeNode, bool)> =
-                VecDeque::with_capacity(PAGE_SIZE * max_depth);
-            let start_path = start.path(); // cloning is better here
-            queue.push_back((start.clone(), false));
+            buffer.push(GallideEntry::previous_directory(start));
+            let mut queue: VecDeque<(SafeNode, Option<usize>)> =
+                VecDeque::with_capacity(config.get_ideal_queue_length());
+            let start_path = start.path();
+            queue.push_back((start.clone(), None));
             let mut depth: usize = 1;
-            'main_loop: while (!queue.is_empty() && depth <= max_depth) {
+            'main_loop: while (!queue.is_empty() && depth <= config.max_depth) {
                 let size = queue.len();
                 for _ in 0..size {
-                    let (front_node, mut parent_matches) = queue.pop_front().unwrap();
-                    let reader = front_node.read();
-                    parent_matches = parent_matches || front_node.filename_starts_with(query);
-                    for child in reader.children.iter().flatten() {
-                        let child_reader = child.read();
-                        let entry = GallideEntry {
-                            node: child.clone(),
-                            entry_type: EntryType::from_is_dir(child_reader.is_dir()),
-                            display_name: child
+                    let (parent_node, mut parent_highlight_index) = queue.pop_front().unwrap();
+                    let parent_reader = parent_node.read();
+                    if parent_highlight_index.is_none()
+                        && parent_node.path() != start_path
+                        && parent_node.filename_starts_with(config.whitelist)
+                    {
+                        parent_highlight_index =
+                            Some(parent_node.filename_index().saturating_sub(start_path.as_os_str().len() +1))
+                    }
+                    for child_node in parent_reader.children.iter().flatten() {
+                        let child_reader = child_node.read();
+                        let child_highlight_index: Option<usize> = match parent_highlight_index {
+                            Some(index) => Some(index),
+                            None => {
+                                if child_node.filename_starts_with(config.whitelist) {
+                                    Some(child_node.filename_index().saturating_sub(start_path.as_os_str().len() + 1))
+                                } else {
+                                    None
+                                }
+                            }
+                        };
+                        let matches_query: bool = parent_highlight_index.is_some()
+                            || child_node.filename_starts_with(config.whitelist);
+                        if matches_query && config.skips == 0 {
+                            if Arc::ptr_eq(&monitored_node,&child_node) {
+                                cursor_location = Some(buffer.len()); 
+                            }
+                            let full_display_name = child_node
                                 .path()
                                 .strip_prefix(start_path)
                                 .unwrap()
                                 .to_string_lossy()
-                                .to_string(),
-                        };
-                        let matches_query: bool =
-                            parent_matches || child.filename_starts_with(query);
-                        if matches_query && !policy.should_skip() {
-                            buffer.push_back(entry);
+                                .to_string();
+                            let (start, string_remainder) =
+                                full_display_name.split_at(child_highlight_index.unwrap_or(0));
+                            let (highlight_section, end) =
+                                string_remainder.split_at(config.whitelist.len());
+                            let entry = GallideEntry {
+                                node: child_node.clone(),
+                                entry_type: EntryType::from_is_dir(child_reader.is_dir()),
+                                display: Line::from(vec![
+                                    Span::from(start.to_owned()),
+                                    Span::styled(
+                                        highlight_section.to_owned(),
+                                        Style::default().blue(),
+                                    ),
+                                    Span::from(end.to_owned()),
+                                ]),
+                            };
+                            buffer.push(entry);
                         }
-                        policy.optional_skip();
-                        if policy.allow_early_exits() && buffer.full() {
+                        config.skips = config.skips.saturating_sub(1);
+                        if buffer.len() == config.max_size {
                             break 'main_loop;
                         }
                         if child_reader.is_dir() {
-                            queue.push_back((child.clone(), matches_query));
+                            queue.push_back((child_node.clone(), child_highlight_index));
                         }
                     }
                 }
                 depth += 1;
             }
+            cursor_location
         }
 
         pub fn new() -> Result<Self> {
@@ -320,6 +356,13 @@ pub mod hierarchy {
             self.prev_root = self.root.clone();
             self.root = TreeNode::new(path, None, Some(vec![self.prev_root.clone()]));
             self.prev_root.write().parent = Some(Arc::downgrade(&self.root));
+            // TODO : DJAL PLEASE REMEMBER YOU NEED TO UPDATE THE NEW ROOT WITH THE LENGTHS OF THE
+            // OLD ROOT
+            let mut writer = self.root.write();
+            writer.depths[1] = 1;
+            for element in self.prev_root.read().depths.iter().skip(1) {
+                writer.depths.push(*element);
+            }
             self.sender.send(self.root.clone());
             self.root.clone()
         }
@@ -335,24 +378,13 @@ pub mod hierarchy {
             time::{Duration, Instant},
         };
 
-        use crate::explore::{
-            GallideEntryVec,
-            tree::hierarchy::{
-                EntryCreationPolicy::{Skip, Tail},
-                FileHierarchy,
-            },
-        };
+        use crate::explore::{GallideEntryVec, tree::hierarchy::FileHierarchy};
         #[test]
         fn make() {
             let mut file_hierarchy = FileHierarchy::new().unwrap();
             sleep(Duration::from_millis(1000));
-            println!("Size {}", file_hierarchy.root.read().nested_entries());
-            let mut buffer = GallideEntryVec::new();
-            file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, "", Tail, 1000);
-            for (idx, entry) in buffer.into_iter().enumerate() {
-                println!("{} ({}) {}", entry.entry_type, idx + 1, entry.name())
-            }
-            println!("Size {}", file_hierarchy.root.read().nested_entries());
+            println!("{:?}", file_hierarchy.root.read().depths);
+            println!("{:?}", file_hierarchy.root.read().depths);
         }
     }
 }
