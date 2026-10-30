@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::DefaultTerminal;
@@ -18,14 +18,14 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => {
                 if self.is_selecting_directory() {
                     self.open_selected_directory();
-                    self.rebuild_directories();
+                    self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
                 } else {
                     self.stop();
                 }
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 self.go_back_one_directory();
-                self.rebuild_directories();
+                self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
             }
             KeyCode::Enter => self.stop(),
             KeyCode::Char('i') => {
@@ -33,7 +33,6 @@ impl App {
                     self.toggle_insert_mode()
                 }
             }
-            KeyCode::Char('c') => self.user_state.search_bar_text.clear(),
             KeyCode::Char('a') => {
                 //self.ask_input(create_ressource_request());
             }
@@ -52,8 +51,9 @@ impl App {
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 self.user_state.jump_buffer = self.user_state.jump_buffer.saturating_mul(10);
                 self.user_state.jump_buffer = self
-                    .user_state.jump_buffer
-                    .saturating_add(c.to_digit(10).unwrap() as u16)
+                    .user_state
+                    .jump_buffer
+                    .saturating_add(c.to_digit(10).unwrap() as usize)
             }
             _ => {}
         }
@@ -102,7 +102,12 @@ impl App {
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         while self.is_running() {
-            self.rebuild_directories();
+            if Instant::now() > self.next_update {
+                if self.available_entries() != self.prev_entry_count {
+                    self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
+                }
+                self.next_update = Instant::now() + Duration::from_millis(100);
+            }
             terminal.draw(|frame| self.render(frame))?;
             if event::poll(Duration::from_millis(50))?
                 && let Key(key) = event::read()?

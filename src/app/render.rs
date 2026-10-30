@@ -3,18 +3,19 @@ use ratatui::{
     layout::{Constraint, Direction::Vertical, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::{
     app::App,
     config::{Config, SearchBarConfig, TooltipConfig},
+    widget::EntryList,
 };
 
 pub(crate) struct Screen {
     pub constraints: Vec<Constraint>,
     pub top_bar: Option<Line<'static>>,
-    pub main_box: List<'static>,
+    pub main_box: EntryList<'static>,
     pub search_bar: Option<Paragraph<'static>>,
     pub tooltips: Option<Paragraph<'static>>,
 }
@@ -35,11 +36,15 @@ impl Screen {
         Screen {
             constraints,
             top_bar: None,
-            main_box: List::default(),
+            main_box: EntryList::new()
+                .style(config.main_box.entry_style)
+                .highlight_style(config.main_box.highlight_style)
+                .highlight_symbol(config.main_box.focus_symbol.clone()),
             search_bar: None,
             tooltips: None,
         }
     }
+
     pub fn build_top_bar(
         &mut self,
         area: &Rect,
@@ -64,10 +69,6 @@ impl Screen {
             spans.push(Span::raw(information));
         }
         self.top_bar = Some(Line::from(spans).style(style));
-    }
-
-    pub fn update_main_box(&mut self, widget: List<'static>) {
-        self.main_box = widget;
     }
 
     pub fn build_search_bar(&mut self, searchmode: bool, text: String, config: &SearchBarConfig) {
@@ -143,13 +144,29 @@ impl App {
             frame.render_widget(widget, area);
         }
 
-        frame.render_stateful_widget(
-            &self.screen.main_box,
+        self.screen
+            .main_box
+            .set_block(
+                self.config.main_box.block.clone().title(format!(
+                    "{} Entries, cursor : {} ",
+                    self.curr_node
+                        .read()
+                        .get_nested_entries(self.user_state.depth as usize) -1 ,
+                    self.user_state.cursor
+                )),
+            );
+        self.screen.main_box.render(
+            &self.curr_list,
             *chunk_iter.next().unwrap(),
-            &mut self.user_state.cursor,
+            frame.buffer_mut(),
+            self.selected_index(),
         );
         if let Some(widget) = &self.screen.search_bar {
-            frame.render_widget(widget, *chunk_iter.next().unwrap());
+            let area = *chunk_iter.next().unwrap();
+            frame.render_widget(widget, area);
+            if self.is_inserting() {
+                frame.set_cursor_position((area.x + 1 + self.user_state.search_bar_text.len() as u16,area.y + 1));
+            }
         }
         if let Some(widget) = &self.screen.tooltips {
             frame.render_widget(widget, *chunk_iter.next().unwrap());

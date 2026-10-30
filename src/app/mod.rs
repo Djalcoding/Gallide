@@ -1,15 +1,14 @@
 pub mod user_input;
 
-use ratatui::widgets::ListState;
-
 use crate::{
     app::render::Screen,
     config::Config,
     explore::{
-        EntryType, GallideEntry, GallideEntryVec, build_entry_list, tree::hierarchy::FileHierarchy,
+        EntryType, GallideEntry, GallideEntryVec, PAGE_SIZE,
+        tree::hierarchy::{EntryListConfiguration, FileHierarchy, SafeNode},
     },
 };
-use std::{path::{Path, PathBuf}, time::Instant};
+use std::{path::PathBuf, time::Instant};
 
 mod render;
 mod runtime;
@@ -22,77 +21,86 @@ pub enum Mode {
     DISCARD,
 }
 
+pub(super) enum CursorRelocation {
+    AlreadyPositioned,
+    Move,
+}
+
 pub struct UserState {
-    jump_buffer: u16,
+    jump_buffer: usize,
     depth: u8,
     search_bar_text: String,
     question_box_text: String,
-    cursor: ListState,
-    current_dir: PathBuf,
+    cursor: usize,
     mode: Mode,
 }
 
 pub struct App {
     screen: Screen,
-    elements: GallideEntryVec,
     file_hierarchy: FileHierarchy,
     user_state: UserState,
+    curr_node: SafeNode,
+    curr_list: GallideEntryVec,
     config: Config,
     running: bool,
     exited: bool,
-    last_update: Instant
+    next_update: Instant,
+    prev_entry_count: usize,
 }
 
 impl App {
+    pub const fn page_size(&self) -> usize {
+        PAGE_SIZE
+    }
     pub fn new(config: Config) -> Self {
-        let start = Path::new(".").canonicalize().unwrap();
+        let file_hierarchy = FileHierarchy::new().unwrap(); // This starts a worker thread
         let mut app = App {
-            file_hierarchy: FileHierarchy::new().unwrap(), // This starts a worker thread
             user_state: UserState {
-                cursor: ListState::default().with_selected(Some(0)),
+                cursor: 0,
                 jump_buffer: 0,
                 depth: config.main_box.default_depth,
                 search_bar_text: String::new(),
                 mode: Mode::SELECTING,
-                current_dir: start,
                 question_box_text: String::new(),
             },
+            curr_node: file_hierarchy.root.clone(),
+            curr_list: GallideEntryVec::from([GallideEntry::previous_directory(
+                &file_hierarchy.root,
+            )]),
+            file_hierarchy,
             running: true,
-            exited: true,
-            elements: GallideEntryVec::new(),
+            exited: false,
             screen: Screen::start(&config),
-            last_update: Instant::now(),
+            next_update: Instant::now(),
+            prev_entry_count: 0,
             config,
         };
         app.user_state.search_bar_text.reserve(200);
         app.user_state.question_box_text.reserve(200);
-        app.rebuild_directories();
+        app.rebuild_directories(CursorRelocation::AlreadyPositioned);
 
         app.screen
             .build_search_bar(false, String::new(), &app.config.search_bar);
         app.screen
             .build_tooltips(&app.config.tooltips, app.config.main_box.entry_style);
-
-        if app.elements.len() > 1 {
-            app.user_state.cursor.select(Some(1));
-        }
         app
     }
 
-    pub fn cursor(&self) -> usize {
-        self.user_state.cursor.selected().unwrap_or(0)
+    pub fn selected_index(&self) -> usize {
+        self.user_state.cursor % PAGE_SIZE
     }
 
-    pub fn current_directory(&self) -> &Path {
-        &self.user_state.current_dir
+    pub fn current_directory(&self) -> PathBuf {
+        self.curr_node.path().to_path_buf()
     }
 
-    pub fn selected_entry(&self) -> &GallideEntry {
-        &self.elements[self.cursor()]
-    }
-
-    pub fn selected_path(&self) -> &Path {
-        self.selected_entry().path()
+    pub fn selected_entry(&self) -> Option<&GallideEntry> {
+        let index = self.selected_index();
+        if index < self.curr_list.len() {
+            Some(&self.curr_list[self.selected_index()])
+        } else {
+            None
+        }
     }
 
     pub fn is_running(&self) -> bool {
@@ -111,86 +119,129 @@ impl App {
     }
 
     pub fn is_selecting_directory(&self) -> bool {
-        matches!(self.selected_entry().entry_type, EntryType::Folder)
+        if let Some(entry) = self.selected_entry() {
+            matches!(entry.entry_type, EntryType::Folder)
+        } else {
+            false
+        }
     }
 
+    // TODO move this and else to UserState
     pub fn move_down(&mut self) {
-        if self.user_state.cursor.selected().unwrap() == self.elements.len() - 1 {
-            self.user_state.cursor.select_first();
-            return;
-        }
-        self.user_state.cursor
-            .scroll_down_by(std::cmp::max(1, self.user_state.jump_buffer));
-        if self.user_state.cursor.selected().unwrap() >= self.elements.len() {
-            self.user_state.cursor.select(Some(self.elements.len() - 1));
-        }
+        let (page_start, page_end) = self.get_page_bounds();
+        let at_end: bool = self.user_state.cursor == self.available_entries() - 1;
+        self.user_state.cursor += std::cmp::max(1, self.user_state.jump_buffer);
         self.user_state.jump_buffer = 0;
+        if self.user_state.cursor >= self.available_entries() {
+            if at_end {
+                self.user_state.cursor = 0;
+            } else {
+                self.user_state.cursor = self.available_entries() - 1;
+            }
+        }
+        if self.user_state.cursor < page_start || self.user_state.cursor >= page_end {
+            self.rebuild_directories(CursorRelocation::AlreadyPositioned);
+        }
     }
 
     pub fn move_up(&mut self) {
-        if self.user_state.cursor.selected().unwrap() == 0 {
-            self.user_state.cursor.select(Some(self.elements.len() - 1));
-            return;
+        let (page_start, page_end) = self.get_page_bounds();
+        if self.user_state.cursor == 0 {
+            self.user_state.cursor = self.available_entries();
+            self.user_state.jump_buffer = 1;
         }
-        self.user_state.cursor.scroll_up_by(std::cmp::max(1, self.user_state.jump_buffer));
+        self.user_state.cursor = self
+            .user_state
+            .cursor
+            .saturating_sub(std::cmp::max(1, self.user_state.jump_buffer));
         self.user_state.jump_buffer = 0;
+        if self.user_state.cursor <= page_start || self.user_state.cursor >= page_end {
+            self.rebuild_directories(CursorRelocation::AlreadyPositioned);
+        }
     }
 
     pub fn increase_depth(&mut self) {
         self.user_state.depth = self.user_state.depth.saturating_add(1);
-        self.rebuild_directories();
+        self.rebuild_directories(CursorRelocation::AlreadyPositioned);
     }
     pub fn decrease_depth(&mut self) {
         if self.user_state.depth != 1 {
             self.user_state.depth -= 1;
         }
-        self.rebuild_directories();
+        self.rebuild_directories(CursorRelocation::AlreadyPositioned);
     }
 
-    pub fn rebuild_directories(&mut self) {
-        self.elements.clear();
-        let highlights: Vec<u16> = Vec::new();
-        self.elements = self.file_hierarchy.get_entries(
-            self.current_directory(),
-            &self.user_state.search_bar_text,
-            self.user_state.depth as u16,
-            false,
+    fn get_page_bounds(&self) -> (usize, usize) {
+        let start = (self.user_state.cursor / self.page_size()) * self.page_size();
+        (start, start + PAGE_SIZE)
+    }
+
+    /// Returns {true} if there are directories to build
+    pub(super) fn rebuild_directories(&mut self, cursor_policy: CursorRelocation) {
+        let (page_start, _) = self.get_page_bounds();
+        let config = EntryListConfiguration {
+            whitelist: &self.user_state.search_bar_text,
+            max_size: PAGE_SIZE,
+            max_depth: self.user_state.depth as usize,
+            skips: page_start,
+        };
+        let selected_node = self.selected_entry().map(|entry| entry.node.clone());
+        let potential_cursor_position = self.file_hierarchy.get_entries(
+            &mut self.curr_list,
+            &self.curr_node,
+            selected_node,
+            config,
         );
-        self.user_state.cursor.select(Some(0));
-        self.screen.update_main_box(build_entry_list(
-            &self.elements,
-            highlights,
-            &self.config.main_box,
-        ));
+        match cursor_policy {
+            CursorRelocation::Move => {
+                self.user_state.cursor = if let Some(position) = potential_cursor_position {
+                    page_start + position
+                } else {
+                    if self.curr_list.len() == 1 { 0 } else { 1 }
+                };
+            }
+            CursorRelocation::AlreadyPositioned => {}
+        }
+        self.prev_entry_count = self.available_entries();
     }
 
-    pub fn add_top_priority_entry(&mut self, entry: GallideEntry) {
-        let previous_directory = self.elements.pop_front().unwrap();
-        self.elements.push_front(entry);
-        self.elements.push_front(previous_directory);
+    pub fn available_entries(&self) -> usize {
+        // check if I can use my variable
+        self.curr_node
+            .read()
+            .get_nested_entries(self.user_state.depth as usize)
     }
 
     pub fn go_back_one_directory(&mut self) {
-        self.user_state.current_dir.pop();
-        self.file_hierarchy.go_back();
-        self.rebuild_directories();
+        let weak_parent = self.curr_node.read().parent.clone();
+        let new_root = match weak_parent {
+            Some(node) => node.upgrade().unwrap().clone(),
+            None => self.file_hierarchy.step_back(),
+        };
+        self.next_update = Instant::now();
+        self.curr_node = new_root;
+        self.user_state.cursor = 1;
+        self.rebuild_directories(CursorRelocation::AlreadyPositioned);
     }
 
     pub fn backspace(&mut self) {
         self.user_state.search_bar_text.pop();
         self.rebuild_searchbar();
-        self.rebuild_directories();
+        self.rebuild_directories(CursorRelocation::Move);
     }
 
     pub fn add_character(&mut self, character: char) {
         self.user_state.search_bar_text.push(character);
         self.rebuild_searchbar();
-        self.rebuild_directories();
+        self.rebuild_directories(CursorRelocation::Move);
     }
 
     fn rebuild_searchbar(&mut self) {
-        self.screen
-            .build_search_bar(true, self.user_state.search_bar_text.clone(), &self.config.search_bar);
+        self.screen.build_search_bar(
+            true,
+            self.user_state.search_bar_text.clone(),
+            &self.config.search_bar,
+        );
     }
 
     pub fn stop(&mut self) {
@@ -215,9 +266,13 @@ impl App {
             self.stop();
             return;
         }
-        self.user_state.current_dir = self.selected_path().to_path_buf();
         self.user_state.search_bar_text.clear();
-        self.user_state.cursor.select_first();
+        self.curr_node = match self.selected_entry() {
+            Some(entry) => entry.node.clone(),
+            None => self.curr_node.clone(),
+        };
+        self.user_state.cursor = 0;
+        self.rebuild_directories(CursorRelocation::AlreadyPositioned);
     }
     pub fn get_bash_string(&self) -> String {
         format!(
@@ -228,11 +283,14 @@ impl App {
                 "F"
             },
             if self.exited {
-                &self.user_state.current_dir
+                self.current_directory()
             } else {
-                self.selected_path()
+                self.curr_list[self.user_state.cursor]
+                    .node
+                    .path()
+                    .to_path_buf()
             }
-            .display()
+            .to_string_lossy()
         )
     }
 }
