@@ -283,7 +283,7 @@ pub mod hierarchy {
                 None,
                 Some(Vec::with_capacity(20)),
             );
-            let thread_count =  2;
+            let thread_count = std::thread::available_parallelism().unwrap().get();
             let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
             let bored_queue_counter: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
             let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
@@ -293,7 +293,7 @@ pub mod hierarchy {
             let hierarchy = FileHierarchy {
                 prev_root: root.clone(),
                 root,
-                sender: tx
+                sender: tx,
             };
             std::thread::spawn(move || Self::contractor_thread(rx, workers));
 
@@ -309,7 +309,8 @@ pub mod hierarchy {
                 let task = incoming_dispatches.recv().unwrap();
                 let mut found_worker = false;
                 for idx in 0..=workers.len() {
-                    if idx == workers.len() { // borrow checker :(
+                    if idx == workers.len() {
+                        // borrow checker :(
                         workers[0].dispatch(task);
                         break;
                     }
@@ -352,7 +353,10 @@ pub mod hierarchy {
             time::{Duration, Instant},
         };
 
-        use crate::explore::{GallideEntryVec, tree::hierarchy::{EntryListConfiguration, FileHierarchy}};
+        use crate::explore::{
+            GallideEntryVec,
+            tree::hierarchy::{EntryListConfiguration, FileHierarchy},
+        };
         #[test]
         fn make() {
             let mut file_hierarchy = FileHierarchy::new().unwrap();
@@ -362,9 +366,14 @@ pub mod hierarchy {
             file_hierarchy.step_back();
             file_hierarchy.step_back();
             let mut buffer = GallideEntryVec::new();
+            let thread_count = std::thread::available_parallelism().unwrap().get();
             loop {
                 let entries = file_hierarchy.root.read().nested_entries();
-                println!("{} :  {entries}", file_hierarchy.root.path().display())
+                println!(
+                    "{} :  {entries}, {thread_count}",
+                    file_hierarchy.root.path().display()
+                );
+                sleep(Duration::from_secs(1));
             }
             // file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, None, EntryListConfiguration { whitelist: "", max_size: 100, skips: 0, max_depth: 100 });
             // for entry in buffer {

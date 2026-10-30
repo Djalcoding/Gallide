@@ -1,8 +1,5 @@
 use std::{
-    collections::VecDeque,
-    fs,
-    path::PathBuf,
-    sync::{
+    collections::VecDeque, fs, os::unix::thread, path::PathBuf, sync::{
         Arc,
         atomic::{
             AtomicBool, AtomicU64,
@@ -56,6 +53,7 @@ impl BFSThread {
             while !queue.is_empty() {
                 let mut size = queue.len();
                 while size > 0 {
+                    size-=1;
                     let Some(origin) = queue.pop_back() else {
                         continue;
                     };
@@ -112,7 +110,6 @@ impl BFSThread {
                         .unwrap()
                         .sort_unstable_by(TreeNode::order);
                     origin.update_parents();
-                    size -= 1;
                 }
             }
         }
