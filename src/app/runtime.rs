@@ -18,14 +18,14 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => {
                 if self.is_selecting_directory() {
                     self.open_selected_directory();
-                    self.rebuild_directories();
+                    self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
                 } else {
                     self.stop();
                 }
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 self.go_back_one_directory();
-                self.rebuild_directories();
+                self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
             }
             KeyCode::Enter => self.stop(),
             KeyCode::Char('i') => {
@@ -104,7 +104,7 @@ impl App {
         while self.is_running() {
             if Instant::now() > self.next_update {
                 if self.available_entries() != self.prev_entry_count {
-                    self.rebuild_directories();
+                    self.rebuild_directories(super::CursorRelocation::AlreadyPositioned);
                 }
                 self.next_update = Instant::now() + Duration::from_millis(100);
             }

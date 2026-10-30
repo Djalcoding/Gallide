@@ -1,5 +1,7 @@
+pub mod worker;
 #[allow(unused)]
 pub mod hierarchy {
+
     use std::{
         borrow::Cow,
         cmp::Ordering::{Greater, Less},
@@ -8,6 +10,7 @@ pub mod hierarchy {
         fmt::format,
         fs::{self, DirEntry, Metadata},
         io::Result,
+        os::unix::thread,
         path::{self, Path, PathBuf},
         process::exit,
         str::CharIndices,
@@ -30,7 +33,10 @@ pub mod hierarchy {
 
     use crate::explore::{
         EntryType, GallideEntry, GallideEntryVec,
-        tree::hierarchy::{self},
+        tree::{
+            hierarchy::{self},
+            worker::{BFSQueueEntry, BFSThread},
+        },
     };
 
     pub struct Node {
@@ -95,7 +101,7 @@ pub mod hierarchy {
         pub fn path(&self) -> &Path {
             &self.path
         }
-        fn order(node1: &SafeNode, node2: &SafeNode) -> std::cmp::Ordering {
+        pub(crate) fn order(node1: &SafeNode, node2: &SafeNode) -> std::cmp::Ordering {
             let reader_1 = node1.read();
             let reader_2 = node2.read();
             let is_1_dir = reader_1.is_dir();
@@ -162,7 +168,7 @@ pub mod hierarchy {
         // TODO private
         pub root: SafeNode,
         pub prev_root: SafeNode,
-        pub sender: Sender<SafeNode>,
+        sender: Sender<BFSQueueEntry>,
     }
 
     pub struct EntryListConfiguration<'a> {
@@ -183,10 +189,10 @@ pub mod hierarchy {
             &self,
             buffer: &mut GallideEntryVec,
             start: &SafeNode,
-            monitored_node: SafeNode,
+            monitored_node: Option<SafeNode>,
             mut config: EntryListConfiguration,
-        )->Option<usize>{
-            let mut cursor_location:Option<usize> = None;
+        ) -> Option<usize> {
+            let mut cursor_location: Option<usize> = None;
             buffer.clear();
             buffer.push(GallideEntry::previous_directory(start));
             let mut queue: VecDeque<(SafeNode, Option<usize>)> =
@@ -203,8 +209,11 @@ pub mod hierarchy {
                         && parent_node.path() != start_path
                         && parent_node.filename_starts_with(config.whitelist)
                     {
-                        parent_highlight_index =
-                            Some(parent_node.filename_index().saturating_sub(start_path.as_os_str().len() +1))
+                        parent_highlight_index = Some(
+                            parent_node
+                                .filename_index()
+                                .saturating_sub(start_path.as_os_str().len() + 1),
+                        )
                     }
                     for child_node in parent_reader.children.iter().flatten() {
                         let child_reader = child_node.read();
@@ -212,7 +221,11 @@ pub mod hierarchy {
                             Some(index) => Some(index),
                             None => {
                                 if child_node.filename_starts_with(config.whitelist) {
-                                    Some(child_node.filename_index().saturating_sub(start_path.as_os_str().len() + 1))
+                                    Some(
+                                        child_node
+                                            .filename_index()
+                                            .saturating_sub(start_path.as_os_str().len() + 1),
+                                    )
                                 } else {
                                     None
                                 }
@@ -221,8 +234,10 @@ pub mod hierarchy {
                         let matches_query: bool = parent_highlight_index.is_some()
                             || child_node.filename_starts_with(config.whitelist);
                         if matches_query && config.skips == 0 {
-                            if Arc::ptr_eq(&monitored_node,&child_node) {
-                                cursor_location = Some(buffer.len()); 
+                            if let Some(ref node) = monitored_node
+                                && Node::is_same(node, child_node)
+                            {
+                                cursor_location = Some(buffer.len());
                             }
                             let full_display_name = child_node
                                 .path()
@@ -263,89 +278,48 @@ pub mod hierarchy {
         }
 
         pub fn new() -> Result<Self> {
-            let (tx, rx): (Sender<SafeNode>, Receiver<SafeNode>) = channel();
             let root = TreeNode::new(
                 PathBuf::from(".").canonicalize().unwrap(),
                 None,
                 Some(Vec::with_capacity(20)),
             );
+            let thread_count =  2;
+            let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
+            let bored_queue_counter: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
+            for _ in 0..thread_count - 1 {
+                workers.push(BFSThread::spin(bored_queue_counter.clone(), tx.clone()));
+            }
             let hierarchy = FileHierarchy {
                 prev_root: root.clone(),
                 root,
-                sender: tx,
+                sender: tx
             };
-            let prev_root = hierarchy.prev_root.clone();
-            let root = hierarchy.root.clone();
-            std::thread::spawn(move || {
-                let mut queue: VecDeque<SafeNode> = VecDeque::new();
-                queue.reserve(200);
-                loop {
-                    let origin = rx.recv();
-                    if let Err(e) = origin {
-                        return;
+            std::thread::spawn(move || Self::contractor_thread(rx, workers));
+
+            hierarchy.sender.send((hierarchy.root.clone(), None));
+            Ok(hierarchy)
+        }
+
+        fn contractor_thread(
+            incoming_dispatches: Receiver<BFSQueueEntry>,
+            workers: Vec<BFSThread>,
+        ) {
+            loop {
+                let task = incoming_dispatches.recv().unwrap();
+                let mut found_worker = false;
+                for idx in 0..=workers.len() {
+                    if idx == workers.len() { // borrow checker :(
+                        workers[0].dispatch(task);
+                        break;
                     }
-                    queue.push_back(origin.unwrap());
-                    while !queue.is_empty() {
-                        let mut size = queue.len();
-                        while size > 0 {
-                            let Some(origin) = queue.pop_back() else {
-                                continue;
-                            };
-                            if Node::is_same(&origin, &prev_root)
-                                && !Node::is_same(&root, &prev_root)
-                            {
-                                continue;
-                            }
-                            let Ok(directory_contents) = fs::read_dir(origin.path()) else {
-                                continue;
-                            };
-                            for entry in directory_contents {
-                                let Ok(entry) = entry else { continue };
-                                let path: PathBuf = entry.path();
-                                let Ok(filetype) = entry.file_type() else {
-                                    continue;
-                                };
-                                if (!filetype.is_file() && !filetype.is_dir()) {
-                                    continue;
-                                }
-                                let Ok(metadata) = entry.metadata() else {
-                                    continue;
-                                };
-                                let node_children = if metadata.is_dir() {
-                                    Some(Vec::new())
-                                } else {
-                                    None
-                                };
-                                let child_node = TreeNode::new(
-                                    path,
-                                    Some(Arc::downgrade(&origin)),
-                                    node_children,
-                                );
-                                origin
-                                    .write()
-                                    .children
-                                    .as_mut()
-                                    .unwrap()
-                                    .push(child_node.clone());
-                                if metadata.is_dir() {
-                                    queue.push_back(child_node.clone());
-                                }
-                            }
-                            origin
-                                .write()
-                                .children
-                                .as_mut()
-                                .unwrap()
-                                .sort_unstable_by(TreeNode::order);
-                            origin.update_parents();
-                            size -= 1;
-                        }
+                    if workers[idx].bored() {
+                        workers[idx].dispatch(task);
+                        found_worker = true;
+                        break;
                     }
                 }
-            });
-
-            hierarchy.sender.send(hierarchy.root.clone());
-            Ok(hierarchy)
+            }
         }
 
         pub fn step_back(&mut self) -> SafeNode {
@@ -356,14 +330,14 @@ pub mod hierarchy {
             self.prev_root = self.root.clone();
             self.root = TreeNode::new(path, None, Some(vec![self.prev_root.clone()]));
             self.prev_root.write().parent = Some(Arc::downgrade(&self.root));
-            // TODO : DJAL PLEASE REMEMBER YOU NEED TO UPDATE THE NEW ROOT WITH THE LENGTHS OF THE
-            // OLD ROOT
             let mut writer = self.root.write();
             writer.depths[1] = 1;
             for element in self.prev_root.read().depths.iter().skip(1) {
                 writer.depths.push(*element);
             }
-            self.sender.send(self.root.clone());
+            drop(writer);
+            self.sender
+                .send((self.root.clone(), Some(self.prev_root.clone())));
             self.root.clone()
         }
     }
@@ -378,13 +352,24 @@ pub mod hierarchy {
             time::{Duration, Instant},
         };
 
-        use crate::explore::{GallideEntryVec, tree::hierarchy::FileHierarchy};
+        use crate::explore::{GallideEntryVec, tree::hierarchy::{EntryListConfiguration, FileHierarchy}};
         #[test]
         fn make() {
             let mut file_hierarchy = FileHierarchy::new().unwrap();
-            sleep(Duration::from_millis(1000));
-            println!("{:?}", file_hierarchy.root.read().depths);
-            println!("{:?}", file_hierarchy.root.read().depths);
+            file_hierarchy.step_back();
+            file_hierarchy.step_back();
+            file_hierarchy.step_back();
+            file_hierarchy.step_back();
+            file_hierarchy.step_back();
+            let mut buffer = GallideEntryVec::new();
+            loop {
+                let entries = file_hierarchy.root.read().nested_entries();
+                println!("{} :  {entries}", file_hierarchy.root.path().display())
+            }
+            // file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, None, EntryListConfiguration { whitelist: "", max_size: 100, skips: 0, max_depth: 100 });
+            // for entry in buffer {
+            //     println!("{}, {}", entry.entry_type, entry.display)
+            // }
         }
     }
 }
