@@ -283,19 +283,19 @@ pub mod hierarchy {
                 None,
                 Some(Vec::with_capacity(20)),
             );
-            let thread_count = std::thread::available_parallelism().unwrap().get();
+            let thread_count: u8 = std::thread::available_parallelism().unwrap().get() as u8;
             let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
-            let bored_queue_counter: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
-            for _ in 0..thread_count - 1 {
-                workers.push(BFSThread::spin(bored_queue_counter.clone(), tx.clone()));
+            let bored_queue_mask: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+            let mut workers: Vec<BFSThread> = Vec::with_capacity((thread_count - 1) as usize);
+            for id in 0..thread_count - 1 {
+                workers.push(BFSThread::spin(bored_queue_mask.clone(), id, tx.clone()));
             }
             let hierarchy = FileHierarchy {
                 prev_root: root.clone(),
                 root,
                 sender: tx,
             };
-            std::thread::spawn(move || Self::contractor_thread(rx, workers));
+            std::thread::spawn(move || Self::contractor_thread(rx, workers, bored_queue_mask));
 
             hierarchy.sender.send((hierarchy.root.clone(), None));
             Ok(hierarchy)
@@ -304,22 +304,16 @@ pub mod hierarchy {
         fn contractor_thread(
             incoming_dispatches: Receiver<BFSQueueEntry>,
             workers: Vec<BFSThread>,
+            bored_queue_mask: Arc<AtomicU64>,
         ) {
             loop {
                 let task = incoming_dispatches.recv().unwrap();
-                let mut found_worker = false;
-                for idx in 0..=workers.len() {
-                    if idx == workers.len() {
-                        // borrow checker :(
-                        workers[0].dispatch(task);
-                        break;
-                    }
-                    if workers[idx].bored() {
-                        workers[idx].dispatch(task);
-                        found_worker = true;
-                        break;
-                    }
+                let queue_mask = bored_queue_mask.load(Relaxed);
+                let mut index: usize = queue_mask.trailing_zeros() as usize;
+                if queue_mask == 0 {
+                    index = 0;
                 }
+                workers[index].dispatch(task);
             }
         }
 
@@ -365,15 +359,14 @@ pub mod hierarchy {
             file_hierarchy.step_back();
             file_hierarchy.step_back();
             file_hierarchy.step_back();
-            let mut buffer = GallideEntryVec::new();
-            let thread_count = std::thread::available_parallelism().unwrap().get();
+            let start = Instant::now();
             loop {
-                let entries = file_hierarchy.root.read().nested_entries();
-                println!(
-                    "{} :  {entries}, {thread_count}",
-                    file_hierarchy.root.path().display()
+                std::println!(
+                    "Duration : {} ns, {}",
+                    start.elapsed().as_nanos(),
+                    file_hierarchy.root.read().nested_entries()
                 );
-                sleep(Duration::from_secs(1));
+                sleep(Duration::from_millis(100));
             }
             // file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, None, EntryListConfiguration { whitelist: "", max_size: 100, skips: 0, max_depth: 100 });
             // for entry in buffer {

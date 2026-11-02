@@ -1,8 +1,11 @@
 use std::{
-    collections::VecDeque, fs, os::unix::thread, path::PathBuf, sync::{
+    collections::VecDeque,
+    fs,
+    path::PathBuf,
+    sync::{
         Arc,
         atomic::{
-            AtomicBool, AtomicU64,
+            AtomicU64,
             Ordering::{self, Release},
         },
         mpsc::{Receiver, Sender, channel},
@@ -15,37 +18,30 @@ pub(crate) type BFSQueueEntry = (SafeNode, Option<SafeNode>);
 
 pub struct BFSThread {
     transmitter: Sender<BFSQueueEntry>, // sends messages to the thread
-    bored: Arc<AtomicBool>,
 }
 
 impl BFSThread {
-    pub fn spin(bored_queues: Arc<AtomicU64>, dispatcher: Sender<BFSQueueEntry>) -> Self {
+    pub fn spin(bored_queues: Arc<AtomicU64>, id: u8, dispatcher: Sender<BFSQueueEntry>) -> Self {
         let (tx, rx) = channel::<BFSQueueEntry>();
-        let bored = Arc::from(AtomicBool::new(false));
-        let bored_clone = bored.clone();
         let _ = std::thread::spawn(move || {
-            Self::bfs(dispatcher, rx, bored_clone, bored_queues);
+            Self::bfs(dispatcher, rx, bored_queues, id);
         });
-        Self {
-            transmitter: tx,
-            bored,
-        }
+        Self { transmitter: tx }
     }
 
     fn bfs(
         dispatcher: Sender<BFSQueueEntry>,
         receiver: Receiver<BFSQueueEntry>,
-        bored: Arc<AtomicBool>,
         bored_queues: Arc<AtomicU64>,
+        id: u8,
     ) {
         let mut queue: VecDeque<BFSQueueEntry> = VecDeque::new();
-        queue.reserve(200);
+        let mask = 1 << id;
+        queue.reserve(1000);
         loop {
-            bored_queues.fetch_add(1, Release);
-            bored.store(true, Release);
+            bored_queues.fetch_or(mask, Release);
             let origin_node = receiver.recv();
-            bored.store(false, Release);
-            bored_queues.fetch_sub(1, Release);
+            bored_queues.fetch_and(!mask, Release);
             if origin_node.is_err() {
                 return;
             }
@@ -53,7 +49,7 @@ impl BFSThread {
             while !queue.is_empty() {
                 let mut size = queue.len();
                 while size > 0 {
-                    size-=1;
+                    size -= 1;
                     let Some(origin) = queue.pop_back() else {
                         continue;
                     };
@@ -79,10 +75,7 @@ impl BFSThread {
                         if !filetype.is_file() && !filetype.is_dir() {
                             continue;
                         }
-                        let Ok(metadata) = entry.metadata() else {
-                            continue;
-                        };
-                        let node_children = if metadata.is_dir() {
+                        let node_children = if filetype.is_dir() {
                             Some(Vec::new())
                         } else {
                             None
@@ -95,8 +88,8 @@ impl BFSThread {
                             .as_mut()
                             .unwrap()
                             .push(child_node.clone());
-                        if metadata.is_dir() {
-                            if bored_queues.load(Ordering::Acquire) > 0 {
+                        if filetype.is_dir() {
+                            if bored_queues.load(Ordering::Relaxed) > 0 {
                                 dispatcher.send((child_node.clone(), None)).unwrap();
                             } else {
                                 queue.push_back((child_node.clone(), None));
@@ -113,10 +106,6 @@ impl BFSThread {
                 }
             }
         }
-    }
-
-    pub fn bored(&self) -> bool {
-        self.bored.load(Ordering::Acquire)
     }
 
     pub fn dispatch(&self, task: BFSQueueEntry) {
