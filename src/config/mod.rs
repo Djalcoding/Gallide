@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use djal_parser::{datastructure::ParsedData, error_handling::FileReadingError};
+use djal_parser::{datastructure::ParsedData, error_handling::ParsingError};
 use ratatui::{
     style::{Color, Style, Stylize},
     text::Span,
@@ -22,7 +22,7 @@ fn white_on_black() -> Style {
 type DColor = djal_parser::color::Color;
 type TColor = ratatui::style::Color;
 
-pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor, FileReadingError> {
+pub fn tui_color(djal_color: Result<DColor, ParsingError>) -> Result<TColor, ParsingError> {
     let color: DColor = djal_color?;
     Ok(match color {
         DColor::RGB(r, g, b) => Color::Rgb(r, g, b),
@@ -48,12 +48,12 @@ pub fn tui_color(djal_color: Result<DColor, FileReadingError>) -> Result<TColor,
     })
 }
 
-fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor, FileReadingError<'a>> {
+fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor, ParsingError<'a>> {
     tui_color(data.as_color(name))
 }
 
 pub fn get_border_type(key: &str, data_map: &ParsedData) -> Option<BorderType> {
-    let (_, raw_border_value) = data_map.as_raw(key).unwrap_or((0, String::from("plain")));
+    let (_, raw_border_value) = data_map.as_raw(key).unwrap_or((0, "plain"));
 
     match raw_border_value.to_lowercase().as_str() {
         "rounded" => Some(BorderType::Rounded),
@@ -284,7 +284,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_file(path: &'_ Path) -> Result<Config, FileReadingError<'_>> {
+    pub fn from_file(path: &'_ Path) -> Result<Config, ParsingError<'_>> {
         let parsed_data = ParsedData::from_file(path)?;
 
         Ok(Config {
