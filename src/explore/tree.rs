@@ -295,7 +295,9 @@ pub mod hierarchy {
                 root,
                 sender: tx,
             };
-            std::thread::spawn(move || Self::contractor_thread(rx, workers, bored_queue_mask));
+            std::thread::spawn(move || {
+                Self::contractor_thread(rx, workers, bored_queue_mask)
+            });
 
             hierarchy.sender.send((hierarchy.root.clone(), None));
             Ok(hierarchy)
@@ -306,13 +308,16 @@ pub mod hierarchy {
             workers: Vec<BFSThread>,
             bored_queue_mask: Arc<AtomicU64>,
         ) {
+            let mut ten_x_enginner_index = 0;
             loop {
                 let task = incoming_dispatches.recv().unwrap();
                 let queue_mask = bored_queue_mask.load(Relaxed);
                 let mut index: usize = queue_mask.trailing_zeros() as usize;
                 if queue_mask == 0 {
-                    index = 0;
+                    index = ten_x_enginner_index;
+                    ten_x_enginner_index = (ten_x_enginner_index + 1) % workers.len()
                 }
+                bored_queue_mask.fetch_and(!(1 << index), Ordering::Release);
                 workers[index].dispatch(task);
             }
         }

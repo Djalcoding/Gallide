@@ -41,7 +41,6 @@ impl BFSThread {
         loop {
             bored_queues.fetch_or(mask, Release);
             let origin_node = receiver.recv();
-            bored_queues.fetch_and(!mask, Release);
             if origin_node.is_err() {
                 return;
             }
