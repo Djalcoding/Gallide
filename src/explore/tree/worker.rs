@@ -12,19 +12,24 @@ use std::{
     },
 };
 
-use crate::explore::tree::hierarchy::{SafeNode, TreeNode};
+use crate::explore::tree::hierarchy::{ExclusionList, SafeNode, TreeNode};
 
-pub(crate) type BFSQueueEntry = (SafeNode, Option<SafeNode>);
+pub(crate) type BFSQueueEntry = SafeNode;
 
 pub struct BFSThread {
     transmitter: Sender<BFSQueueEntry>, // sends messages to the thread
 }
 
 impl BFSThread {
-    pub fn spin(bored_queues: Arc<AtomicU64>, id: u8, dispatcher: Sender<BFSQueueEntry>) -> Self {
+    pub fn spin(
+        bored_queues: Arc<AtomicU64>,
+        id: u8,
+        dispatcher: Sender<BFSQueueEntry>,
+        exclusion_list: ExclusionList,
+    ) -> Self {
         let (tx, rx) = channel::<BFSQueueEntry>();
         let _ = std::thread::spawn(move || {
-            Self::bfs(dispatcher, rx, bored_queues, id);
+            Self::bfs(dispatcher, rx, bored_queues, exclusion_list, id);
         });
         Self { transmitter: tx }
     }
@@ -33,6 +38,7 @@ impl BFSThread {
         dispatcher: Sender<BFSQueueEntry>,
         receiver: Receiver<BFSQueueEntry>,
         bored_queues: Arc<AtomicU64>,
+        exclusion_list: ExclusionList,
         id: u8,
     ) {
         let mut queue: VecDeque<BFSQueueEntry> = VecDeque::new();
@@ -52,25 +58,20 @@ impl BFSThread {
                     let Some(origin) = queue.pop_back() else {
                         continue;
                     };
-                    let (origin, node_to_ignore) = origin;
                     let origin_weak_ptr = Arc::downgrade(&origin);
                     let Ok(directory_contents) = fs::read_dir(origin.path()) else {
                         continue;
                     };
-                    let mut found_duplicate = false;
                     for child in directory_contents {
                         let Ok(entry) = child else { continue };
                         let child_path: PathBuf = entry.path();
-                        if !found_duplicate
-                            && let Some(ref node) = node_to_ignore
-                            && node.path() == child_path
-                        {
-                            found_duplicate = true;
+                        if exclusion_list.read().unwrap().contains(&child_path) {
                             continue;
                         }
                         let Ok(filetype) = entry.file_type() else {
                             continue;
                         };
+
                         if !filetype.is_file() && !filetype.is_dir() {
                             continue;
                         }
@@ -89,9 +90,9 @@ impl BFSThread {
                             .push(child_node.clone());
                         if filetype.is_dir() {
                             if bored_queues.load(Ordering::Relaxed) > 0 {
-                                dispatcher.send((child_node.clone(), None)).unwrap();
+                                dispatcher.send(child_node.clone()).unwrap();
                             } else {
-                                queue.push_back((child_node.clone(), None));
+                                queue.push_back(child_node.clone());
                             }
                         }
                     }

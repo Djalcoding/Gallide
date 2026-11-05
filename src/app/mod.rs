@@ -53,7 +53,7 @@ impl App {
         PAGE_SIZE
     }
     pub fn new(config: Config) -> Self {
-        let file_hierarchy = FileHierarchy::new().unwrap(); // This starts a worker thread
+        let file_hierarchy = FileHierarchy::new(&config.behavior).unwrap(); // This starts a worker thread
         let mut app = App {
             user_state: UserState {
                 cursor: 0,

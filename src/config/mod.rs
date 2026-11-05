@@ -1,4 +1,6 @@
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+};
 
 use djal_parser::{datastructure::ParsedData, error_handling::ParsingError};
 use ratatui::{
@@ -48,7 +50,7 @@ pub fn tui_color(djal_color: Result<DColor, ParsingError>) -> Result<TColor, Par
     })
 }
 
-fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor, ParsingError<'a>> {
+fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor, ParsingError> {
     tui_color(data.as_color(name))
 }
 
@@ -275,24 +277,50 @@ impl ParsedConstructable for TooltipConfig {
 }
 
 #[derive(Default)]
+pub struct BehaviorConfig {
+    pub case_sensitive: bool,
+    pub directory_exclusion_list: Vec<PathBuf>,
+}
+impl ParsedConstructable for BehaviorConfig {
+    fn from_file(data: &ParsedData) -> Self {
+        let default: Self = Self::default();
+        Self {
+            case_sensitive: data
+                .as_boolean("case sensitive")
+                .unwrap_or(default.case_sensitive),
+            directory_exclusion_list: Config::get_ignored_paths(data)
+                .unwrap_or(default.directory_exclusion_list),
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct Config {
     pub directory_line: DirectoryLineConfig,
     pub main_box: MainBoxConfig,
     pub search_bar: SearchBarConfig,
     pub tooltips: TooltipConfig,
-    pub case_sensitive: bool,
+    pub behavior: BehaviorConfig,
 }
 
 impl Config {
-    pub fn from_file(path: &'_ Path) -> Result<Config, ParsingError<'_>> {
+    pub fn from_file(path: &'_ Path) -> Result<Config, ParsingError> {
         let parsed_data = ParsedData::from_file(path)?;
-
         Ok(Config {
-            case_sensitive: parsed_data.as_boolean("case sensitive").unwrap_or(false),
+            behavior: BehaviorConfig::from_file(&parsed_data),
             directory_line: DirectoryLineConfig::from_file(&parsed_data),
             main_box: MainBoxConfig::from_file(&parsed_data),
             search_bar: SearchBarConfig::from_file(&parsed_data),
             tooltips: TooltipConfig::from_file(&parsed_data),
         })
+    }
+    /// Ignored paths have no "" around them
+    fn get_ignored_paths(parsed_data: &ParsedData) -> Result<Vec<PathBuf>, ParsingError> {
+        let (_, array) = parsed_data.as_raw_array("ignored directories")?;
+        let mut output: Vec<PathBuf> = Vec::with_capacity(array.len());
+        for directory in array {
+            output.push(PathBuf::from(directory));
+        }
+        Ok(output)
     }
 }

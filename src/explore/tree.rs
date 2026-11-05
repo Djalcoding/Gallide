@@ -5,7 +5,7 @@ pub mod hierarchy {
     use std::{
         borrow::Cow,
         cmp::Ordering::{Greater, Less},
-        collections::{HashMap, VecDeque},
+        collections::{HashMap, HashSet, VecDeque},
         error::Error,
         fmt::format,
         fs::{self, DirEntry, Metadata},
@@ -31,11 +31,14 @@ pub mod hierarchy {
         text::{Line, Span},
     };
 
-    use crate::explore::{
-        EntryType, GallideEntry, GallideEntryVec,
-        tree::{
-            hierarchy::{self},
-            worker::{BFSQueueEntry, BFSThread},
+    use crate::{
+        config::BehaviorConfig,
+        explore::{
+            EntryType, GallideEntry, GallideEntryVec,
+            tree::{
+                hierarchy::{self},
+                worker::{BFSQueueEntry, BFSThread},
+            },
         },
     };
 
@@ -163,11 +166,12 @@ pub mod hierarchy {
     pub type SafeNode = Arc<TreeNode>;
 
     type WeakSafeNode = Weak<TreeNode>;
+    pub(super) type ExclusionList = Arc<RwLock<HashSet<PathBuf>>>; // we don't keep a reference here
 
     pub struct FileHierarchy {
         // TODO private
         pub root: SafeNode,
-        pub prev_root: SafeNode,
+        exclusion_list: ExclusionList,
         sender: Sender<BFSQueueEntry>,
     }
 
@@ -277,7 +281,10 @@ pub mod hierarchy {
             cursor_location
         }
 
-        pub fn new() -> Result<Self> {
+        pub fn new(config: &BehaviorConfig) -> Result<Self> {
+            let mut exclusion_list = ExclusionList::from(RwLock::from(HashSet::from_iter(
+                config.directory_exclusion_list.iter().cloned(),
+            )));
             let root = TreeNode::new(
                 PathBuf::from(".").canonicalize().unwrap(),
                 None,
@@ -288,18 +295,20 @@ pub mod hierarchy {
             let bored_queue_mask: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
             let mut workers: Vec<BFSThread> = Vec::with_capacity((thread_count - 1) as usize);
             for id in 0..thread_count - 1 {
-                workers.push(BFSThread::spin(bored_queue_mask.clone(), id, tx.clone()));
+                workers.push(BFSThread::spin(
+                    bored_queue_mask.clone(),
+                    id,
+                    tx.clone(),
+                    exclusion_list.clone(),
+                ));
             }
             let hierarchy = FileHierarchy {
-                prev_root: root.clone(),
                 root,
                 sender: tx,
+                exclusion_list,
             };
-            std::thread::spawn(move || {
-                Self::contractor_thread(rx, workers, bored_queue_mask)
-            });
-
-            hierarchy.sender.send((hierarchy.root.clone(), None));
+            std::thread::spawn(move || Self::contractor_thread(rx, workers, bored_queue_mask));
+            hierarchy.sender.send(hierarchy.root.clone());
             Ok(hierarchy)
         }
 
@@ -327,17 +336,20 @@ pub mod hierarchy {
             if !path.pop() {
                 return self.root.clone();
             }
-            self.prev_root = self.root.clone();
-            self.root = TreeNode::new(path, None, Some(vec![self.prev_root.clone()]));
-            self.prev_root.write().parent = Some(Arc::downgrade(&self.root));
+            let prev_root = self.root.clone();
+            self.root = TreeNode::new(path, None, Some(vec![prev_root.clone()]));
+            prev_root.write().parent = Some(Arc::downgrade(&self.root));
             let mut writer = self.root.write();
             writer.depths[1] = 1;
-            for element in self.prev_root.read().depths.iter().skip(1) {
+            for element in prev_root.read().depths.iter().skip(1) {
                 writer.depths.push(*element);
             }
             drop(writer);
-            self.sender
-                .send((self.root.clone(), Some(self.prev_root.clone())));
+            self.exclusion_list
+                .write()
+                .unwrap()
+                .insert(prev_root.path().to_owned());
+            self.sender.send(self.root.clone());
             self.root.clone()
         }
     }
@@ -352,31 +364,23 @@ pub mod hierarchy {
             time::{Duration, Instant},
         };
 
-        use crate::explore::{
-            GallideEntryVec,
-            tree::hierarchy::{EntryListConfiguration, FileHierarchy},
+        use ratatui::buffer;
+
+        use crate::{
+            config::BehaviorConfig,
+            explore::{
+                GallideEntryVec,
+                tree::hierarchy::{EntryListConfiguration, FileHierarchy},
+            },
         };
         #[test]
         fn make() {
-            let mut file_hierarchy = FileHierarchy::new().unwrap();
+            let config = BehaviorConfig::default();
+            let mut file_hierarchy = FileHierarchy::new(&config).unwrap();
             file_hierarchy.step_back();
             file_hierarchy.step_back();
             file_hierarchy.step_back();
-            file_hierarchy.step_back();
-            file_hierarchy.step_back();
-            let start = Instant::now();
-            loop {
-                std::println!(
-                    "Duration : {} ns, {}",
-                    start.elapsed().as_nanos(),
-                    file_hierarchy.root.read().nested_entries()
-                );
-                sleep(Duration::from_millis(100));
-            }
-            // file_hierarchy.get_entries(&mut buffer, &file_hierarchy.root, None, EntryListConfiguration { whitelist: "", max_size: 100, skips: 0, max_depth: 100 });
-            // for entry in buffer {
-            //     println!("{}, {}", entry.entry_type, entry.display)
-            // }
+            println!("{:?}", file_hierarchy.exclusion_list.read().unwrap())
         }
     }
 }
