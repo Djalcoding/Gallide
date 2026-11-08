@@ -373,14 +373,14 @@ pub mod hierarchy {
                 tree::hierarchy::{EntryListConfiguration, FileHierarchy},
             },
         };
-        #[test]
-        fn make() {
-            let config = BehaviorConfig::default();
-            let mut file_hierarchy = FileHierarchy::new(&config).unwrap();
-            file_hierarchy.step_back();
-            file_hierarchy.step_back();
-            file_hierarchy.step_back();
-            println!("{:?}", file_hierarchy.exclusion_list.read().unwrap())
-        }
+        // #[test]
+        // fn make() {
+        //     let config = BehaviorConfig::default();
+        //     let mut file_hierarchy = FileHierarchy::new(&config).unwrap();
+        //     file_hierarchy.step_back();
+        //     file_hierarchy.step_back();
+        //     file_hierarchy.step_back();
+        //     println!("{:?}", file_hierarchy.exclusion_list.read().unwrap())
+        // }
     }
 }

@@ -1,6 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use djal_parser::{datastructure::ParsedData, error_handling::ParsingError};
 use ratatui::{
@@ -322,5 +320,19 @@ impl Config {
             output.push(PathBuf::from(directory));
         }
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::config::Config;
+
+    #[test]
+    fn excluded_directories() {
+        let config = Config::from_file(Path::new(
+            "/home/bert/Projects/RustProjects/gallide/test_config.djal",
+        )).unwrap();
     }
 }
