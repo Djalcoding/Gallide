@@ -11,6 +11,7 @@ use crate::explore::{
 };
 
 pub mod tree;
+pub mod ringbuffer;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
