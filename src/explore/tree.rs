@@ -7,10 +7,11 @@ pub mod hierarchy {
         cmp::Ordering::{Greater, Less},
         collections::{HashMap, HashSet, VecDeque},
         error::Error,
+        ffi::OsStr,
         fmt::format,
         fs::{self, DirEntry, Metadata},
         io::Result,
-        os::unix::thread,
+        os::unix::{process, thread},
         path::{self, Path, PathBuf},
         process::exit,
         str::CharIndices,
@@ -34,7 +35,7 @@ pub mod hierarchy {
     use crate::{
         config::BehaviorConfig,
         explore::{
-            EntryType, GallideEntry, GallideEntryVec,
+            EntryType, GallideEntry, GallideEntryVec, Page,
             tree::{
                 hierarchy::{self},
                 worker::{BFSQueueEntry, BFSThread},
@@ -80,9 +81,22 @@ pub mod hierarchy {
     pub struct TreeNode {
         data: RwLock<Node>,
         path: PathBuf,
+        is_dir: bool,
     }
 
     impl TreeNode {
+        pub fn satisfies_whitelist(
+            &self,
+            start_path: &OsStr,
+            whitelist: &str,
+            highlight_index: &mut Option<usize>,
+        ) {
+            if highlight_index.is_none() && self.filename_starts_with(whitelist) {
+                (*highlight_index) =
+                    Some(self.filename_index().saturating_sub(start_path.len() + 1))
+            }
+        }
+
         pub fn read(&self) -> RwLockReadGuard<'_, Node> {
             self.data.read().unwrap()
         }
@@ -97,12 +111,17 @@ pub mod hierarchy {
         ) -> Arc<Self> {
             Arc::from(TreeNode {
                 path,
+                is_dir: children.is_some(),
                 data: RwLock::from(Node::new(parent, children)),
             })
         }
 
         pub fn path(&self) -> &Path {
             &self.path
+        }
+
+        pub fn is_dir(&self) -> bool {
+            self.is_dir
         }
         pub(crate) fn order(node1: &SafeNode, node2: &SafeNode) -> std::cmp::Ordering {
             let reader_1 = node1.read();
@@ -171,20 +190,20 @@ pub mod hierarchy {
     pub struct FileHierarchy {
         // TODO private
         pub root: SafeNode,
+        pub config: BehaviorConfig,
         exclusion_list: ExclusionList,
         sender: Sender<BFSQueueEntry>,
     }
 
-    pub struct EntryListConfiguration<'a> {
-        pub whitelist: &'a str,
-        pub max_size: usize,
-        pub skips: usize,
+    pub struct EntryCreationConfig<'a> {
+        pub curr_page: &'a Page,
         pub max_depth: usize,
+        pub whitelist: &'a str,
     }
 
-    impl EntryListConfiguration<'_> {
+    impl EntryCreationConfig<'_> {
         pub(crate) fn get_ideal_queue_length(&self) -> usize {
-            self.max_size * self.max_depth * 100
+            self.curr_page.size() * self.max_depth * 100
         }
     }
 
@@ -194,81 +213,64 @@ pub mod hierarchy {
             buffer: &mut GallideEntryVec,
             start: &SafeNode,
             monitored_node: Option<SafeNode>,
-            mut config: EntryListConfiguration,
-        ) -> Option<usize> {
-            let mut cursor_location: Option<usize> = None;
+            mut config: EntryCreationConfig,
+        ) -> Page {
+            let mut output = Page {
+                start: -1,
+                length: 0,
+                is_end: true,
+            };
+            let mut node_position: Option<usize> = None;
             buffer.clear();
-            buffer.push(GallideEntry::previous_directory(start));
+            if config.curr_page.start() == 0 {
+                output.length += 1;
+                buffer.push(GallideEntry::previous_directory(start));
+            }
+            let start_path = start.path().as_os_str();
+            let mut depth: usize = 1;
+            let mut skipped = 0usize;
             let mut queue: VecDeque<(SafeNode, Option<usize>)> =
                 VecDeque::with_capacity(config.get_ideal_queue_length());
-            let start_path = start.path();
             queue.push_back((start.clone(), None));
-            let mut depth: usize = 1;
             'main_loop: while (!queue.is_empty() && depth <= config.max_depth) {
                 let size = queue.len();
                 for _ in 0..size {
                     let (parent_node, mut parent_highlight_index) = queue.pop_front().unwrap();
                     let parent_reader = parent_node.read();
-                    if parent_highlight_index.is_none()
-                        && parent_node.path() != start_path
-                        && parent_node.filename_starts_with(config.whitelist)
-                    {
-                        parent_highlight_index = Some(
-                            parent_node
-                                .filename_index()
-                                .saturating_sub(start_path.as_os_str().len() + 1),
-                        )
+                    if parent_node.path() != start_path {
+                        parent_node.satisfies_whitelist(
+                            start_path,
+                            config.whitelist,
+                            &mut parent_highlight_index,
+                        );
                     }
                     for child_node in parent_reader.children.iter().flatten() {
+                        let mut child_highlight_index: Option<usize> = parent_highlight_index;
+                        child_node.satisfies_whitelist(
+                            start_path,
+                            config.whitelist,
+                            &mut child_highlight_index,
+                        );
                         let child_reader = child_node.read();
-                        let child_highlight_index: Option<usize> = match parent_highlight_index {
-                            Some(index) => Some(index),
-                            None => {
-                                if child_node.filename_starts_with(config.whitelist) {
-                                    Some(
-                                        child_node
-                                            .filename_index()
-                                            .saturating_sub(start_path.as_os_str().len() + 1),
-                                    )
-                                } else {
-                                    None
-                                }
-                            }
-                        };
-                        let matches_query: bool = parent_highlight_index.is_some()
-                            || child_node.filename_starts_with(config.whitelist);
-                        if matches_query && config.skips == 0 {
+                        if let Some(highlight_index) = child_highlight_index {
                             if let Some(ref node) = monitored_node
                                 && Node::is_same(node, child_node)
                             {
-                                cursor_location = Some(buffer.len());
+                                node_position = Some(buffer.len());
                             }
-                            let full_display_name = child_node
-                                .path()
-                                .strip_prefix(start_path)
-                                .unwrap()
-                                .to_string_lossy()
-                                .to_string();
-                            let (start, string_remainder) =
-                                full_display_name.split_at(child_highlight_index.unwrap_or(0));
-                            let (highlight_section, end) =
-                                string_remainder.split_at(config.whitelist.len());
-                            let entry = GallideEntry {
-                                node: child_node.clone(),
-                                entry_type: EntryType::from_is_dir(child_reader.is_dir()),
-                                display: Line::from(vec![
-                                    Span::from(start.to_owned()),
-                                    Span::styled(
-                                        highlight_section.to_owned(),
-                                        Style::default().blue(),
-                                    ),
-                                    Span::from(end.to_owned()),
-                                ]),
-                            };
-                            buffer.push(entry);
+                            buffer.push(GallideEntry::from_node(
+                                child_node,
+                                start_path,
+                                highlight_index,
+                                config.whitelist.len(),
+                            ));
+                            if output.start == -1 {
+                                output.start = skipped as isize;
+                            }
+                            output.length += 1;
                         }
-                        config.skips = config.skips.saturating_sub(1);
-                        if buffer.len() == config.max_size {
+                        if buffer.len() == self.config.page_size {
+                            output.is_end = queue.is_empty();
                             break 'main_loop;
                         }
                         if child_reader.is_dir() {
@@ -278,7 +280,7 @@ pub mod hierarchy {
                 }
                 depth += 1;
             }
-            cursor_location
+            output
         }
 
         pub fn new(config: &BehaviorConfig) -> Result<Self> {
@@ -306,6 +308,7 @@ pub mod hierarchy {
                 root,
                 sender: tx,
                 exclusion_list,
+                config: config.clone(),
             };
             std::thread::spawn(move || Self::contractor_thread(rx, workers, bored_queue_mask));
             hierarchy.sender.send(hierarchy.root.clone());
@@ -370,7 +373,7 @@ pub mod hierarchy {
             config::BehaviorConfig,
             explore::{
                 GallideEntryVec,
-                tree::hierarchy::{EntryListConfiguration, FileHierarchy},
+                tree::hierarchy::{EntryCreationConfig, FileHierarchy},
             },
         };
         // #[test]

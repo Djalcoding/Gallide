@@ -274,11 +274,23 @@ impl ParsedConstructable for TooltipConfig {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone)]
 pub struct BehaviorConfig {
     pub case_sensitive: bool,
+    pub page_size: usize,
     pub directory_exclusion_list: Vec<PathBuf>,
 }
+
+impl Default for BehaviorConfig {
+    fn default() -> Self {
+        Self {
+            case_sensitive: false,
+            page_size: 1000,
+            directory_exclusion_list: vec![PathBuf::from("/proc"), PathBuf::from("/sys")],
+        }
+    }
+}
+
 impl ParsedConstructable for BehaviorConfig {
     fn from_file(data: &ParsedData) -> Self {
         let default: Self = Self::default();
@@ -288,6 +300,10 @@ impl ParsedConstructable for BehaviorConfig {
                 .unwrap_or(default.case_sensitive),
             directory_exclusion_list: Config::get_ignored_paths(data)
                 .unwrap_or(default.directory_exclusion_list),
+            page_size: data
+                .as_number("directory buffer size")
+                .unwrap_or(default.page_size as f64)
+                as usize,
         }
     }
 }
@@ -312,7 +328,7 @@ impl Config {
             tooltips: TooltipConfig::from_file(&parsed_data),
         })
     }
-    /// Ignored paths have no "" around them
+    /// Ignored paths must have no "" around them
     fn get_ignored_paths(parsed_data: &ParsedData) -> Result<Vec<PathBuf>, ParsingError> {
         let (_, array) = parsed_data.as_raw_array("ignored directories")?;
         let mut output: Vec<PathBuf> = Vec::with_capacity(array.len());
@@ -333,6 +349,11 @@ mod tests {
     fn excluded_directories() {
         let config = Config::from_file(Path::new(
             "/home/bert/Projects/RustProjects/gallide/test_config.djal",
-        )).unwrap();
+        ))
+        .unwrap();
+        assert_eq!(
+            config.behavior.directory_exclusion_list,
+            vec![Path::new("/proc"), Path::new("/sys")]
+        )
     }
 }

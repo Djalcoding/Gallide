@@ -148,11 +148,11 @@ impl App {
             .main_box
             .set_block(
                 self.config.main_box.block.clone().title(format!(
-                    "{} Entries, cursor : {} ",
-                    self.curr_node
-                        .read()
-                        .get_nested_entries(self.user_state.depth as usize) -1 ,
-                    self.user_state.cursor
+                    "{} Entries, cursor : {}, bounds : {:?}, page : {:?}",
+                    self.available_entries(),
+                    self.user_state.cursor,
+                    self.get_page_bounds(),
+                    self.user_state.current_page
                 )),
             );
         self.screen.main_box.render(
