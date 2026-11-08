@@ -213,7 +213,7 @@ pub mod hierarchy {
             buffer: &mut GallideEntryVec,
             start: &SafeNode,
             monitored_node: Option<SafeNode>,
-            mut config: EntryCreationConfig,
+            config: EntryCreationConfig,
         ) -> Page {
             let mut output = Page {
                 start: -1,
@@ -226,9 +226,11 @@ pub mod hierarchy {
                 output.length += 1;
                 buffer.push(GallideEntry::previous_directory(start));
             }
+
             let start_path = start.path().as_os_str();
             let mut depth: usize = 1;
             let mut skipped = 0usize;
+
             let mut queue: VecDeque<(SafeNode, Option<usize>)> =
                 VecDeque::with_capacity(config.get_ideal_queue_length());
             queue.push_back((start.clone(), None));

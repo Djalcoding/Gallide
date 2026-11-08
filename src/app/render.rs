@@ -148,10 +148,9 @@ impl App {
             .main_box
             .set_block(
                 self.config.main_box.block.clone().title(format!(
-                    "{} Entries, cursor : {}, bounds : {:?}, page : {:?}",
+                    "{} Entries, cursor : {}, page : {:?}",
                     self.available_entries(),
                     self.user_state.cursor,
-                    self.get_page_bounds(),
                     self.user_state.current_page
                 )),
             );

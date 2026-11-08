@@ -21,11 +21,6 @@ pub enum Mode {
     DISCARD,
 }
 
-pub(super) enum CursorRelocation {
-    AlreadyPositioned,
-    GoToEnd,
-    Move,
-}
 
 pub struct UserState {
     pinned: bool,
@@ -132,7 +127,6 @@ impl App {
     pub fn move_down(&mut self) {
         self.user_state.pinned = false;
         let on_end = self.on_list_end();
-        self.user_state.cursor;
         self.user_state.cursor += std::cmp::max(1, self.user_state.jump_buffer);
         self.user_state.jump_buffer = 0;
         if on_end {
