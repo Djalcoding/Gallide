@@ -89,15 +89,24 @@ pub mod hierarchy {
         pub fn satisfies_whitelist(
             &self,
             start_path: &OsStr,
-            whitelist: &str,
+            whitelist_queries: &[&str],
             highlight_index: &mut Option<usize>,
+            current_query: &mut usize,
         ) {
+            if *current_query == whitelist_queries.len() {
+                return;
+            }
             let offset: usize = !(start_path == "/") as usize;
-            if highlight_index.is_none() && self.filename_starts_with(whitelist) {
-                (*highlight_index) = Some(
-                    self.filename_index()
-                        .saturating_sub(start_path.len() + offset),
-                )
+            if self.filename_starts_with(whitelist_queries[*current_query]) {
+                (*current_query) += 1;
+                if highlight_index.is_none() {
+                    (*highlight_index) = Some(
+                        self.filename_index()
+                            .saturating_sub(start_path.len() + offset),
+                    )
+                }
+            } else {
+                (*current_query) = 0;
             }
         }
 
@@ -227,9 +236,9 @@ pub mod hierarchy {
         ) -> (usize, isize) {
             let length = 0;
             buffer.clear();
-
+            let queries: Vec<&str> = context.whitelist.split('/').collect::<Vec<&str>>();
             let start_path = start.path().as_os_str();
-            let mut queue: VecDeque<(SafeNode, Option<usize>)> =
+            let mut queue: VecDeque<(SafeNode, usize, Option<usize>)> =
                 VecDeque::with_capacity(context.get_ideal_queue_length());
             let mut is_end = true;
             let mut current_depth: usize = 1;
@@ -238,28 +247,34 @@ pub mod hierarchy {
                 buffer.push(GallideEntry::previous_directory(start));
             }
             let mut processed = 1usize; // '..'
-            queue.push_back((start.clone(), None));
+            queue.push_back((start.clone(), 0, None));
             'main_loop: while (!queue.is_empty() && current_depth <= context.max_depth) {
                 let size = queue.len();
                 for _ in 0..size {
-                    let (parent_node, mut parent_highlight_index) = queue.pop_front().unwrap();
+                    let (parent_node, mut current_query, mut parent_highlight_index) =
+                        queue.pop_front().unwrap();
                     let parent_reader = parent_node.read();
-                    if parent_node.path() != start_path {
-                        parent_node.satisfies_whitelist(
-                            start_path,
-                            context.whitelist,
-                            &mut parent_highlight_index,
-                        );
-                    }
+                    // if parent_node.path() != start_path {
+                    //     parent_node.satisfies_whitelist(
+                    //         start_path,
+                    //         &queries,
+                    //         &mut parent_highlight_index,
+                    //         &mut current_query,
+                    //     );
+                    // }
                     for child_node in parent_reader.children.iter().flatten() {
+                        let mut child_current_query = current_query;
                         let mut child_highlight_index: Option<usize> = parent_highlight_index;
                         child_node.satisfies_whitelist(
                             start_path,
-                            context.whitelist,
+                            &queries,
                             &mut child_highlight_index,
+                            &mut child_current_query,
                         );
                         let child_reader = child_node.read();
-                        if let Some(highlight_index) = child_highlight_index {
+                        if child_current_query == queries.len()
+                            && let Some(highlight_index) = child_highlight_index
+                        {
                             if processed != 0 && processed.is_multiple_of(context.config.page_size)
                             {
                                 spin += 1;
@@ -286,7 +301,11 @@ pub mod hierarchy {
                             }
                         }
                         if child_reader.is_dir() {
-                            queue.push_back((child_node.clone(), child_highlight_index));
+                            queue.push_back((
+                                child_node.clone(),
+                                child_current_query,
+                                child_highlight_index,
+                            ));
                         }
                     }
                 }
