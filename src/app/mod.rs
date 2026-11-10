@@ -9,7 +9,10 @@ use crate::{
         tree::hierarchy::{EntryCreationContext, FileHierarchy, SafeNode},
     },
 };
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 mod render;
 mod runtime;
@@ -42,6 +45,7 @@ pub struct App {
     running: bool,
     exited: bool,
     next_update: Instant,
+    next_text_related_update: Option<Instant>,
     prev_entry_count: usize,
 }
 
@@ -65,6 +69,7 @@ impl App {
             exited: false,
             screen: Screen::start(&config),
             next_update: Instant::now(),
+            next_text_related_update: None,
             prev_entry_count: 0,
             config,
         };
@@ -176,6 +181,7 @@ impl App {
             &self.curr_node,
             selected_node,
             config,
+            &self.config.main_box.query_match_style,
         );
         self.user_state.page_bounds.0 = spins * self.config.behavior.page_size;
         self.user_state.page_bounds.1 =
@@ -212,13 +218,13 @@ impl App {
     pub fn backspace(&mut self) {
         self.user_state.search_bar_text.pop();
         self.rebuild_searchbar();
-        self.rebuild_directories(false);
+        self.next_text_related_update = Some(Instant::now() + Duration::from_millis(250))
     }
 
     pub fn add_character(&mut self, character: char) {
         self.user_state.search_bar_text.push(character);
         self.rebuild_searchbar();
-        self.rebuild_directories(false);
+        self.next_text_related_update = Some(Instant::now() + Duration::from_millis(250))
     }
 
     fn rebuild_searchbar(&mut self) {

@@ -17,5 +17,4 @@ walkdir = "2.5.0"
 
 [profile.release]
 opt-level = 3
-debug = true
 # overflow-checks = false 

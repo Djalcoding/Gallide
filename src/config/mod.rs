@@ -129,12 +129,11 @@ impl ParsedConstructable for DirectoryLineConfig {
 pub struct MainBoxConfig {
     pub entry_style: Style,
     pub highlight_style: Style,
-    pub write_mode_style: Style,
+    pub query_match_style: Style,
     pub focus_symbol: String,
     pub folder_symbol: Span<'static>,
     pub file_symbol: Span<'static>,
     pub block: Block<'static>,
-    pub write_mode_block: Block<'static>,
     pub display_file_size: bool,
     pub default_depth: u8,
 }
@@ -142,10 +141,9 @@ impl Default for MainBoxConfig {
     fn default() -> Self {
         MainBoxConfig {
             entry_style: white_on_black(), // text & background
-            write_mode_style: white_on_black(),
             highlight_style: Style::default().fg(TColor::Black).bg(TColor::White),
+            query_match_style: Style::default().blue(),
             block: white_block(),
-            write_mode_block: white_block(),
             focus_symbol: String::from("> "),
             folder_symbol: Span::from("").style(white_on_black()),
             file_symbol: Span::from("").style(white_on_black()),
@@ -166,15 +164,10 @@ impl ParsedConstructable for MainBoxConfig {
             get_color(data, "file symbol color").unwrap_or(default.file_symbol.style.fg.unwrap());
         MainBoxConfig {
             entry_style: style,
-            write_mode_style: style,
             highlight_style,
+            query_match_style: Style::default().fg(get_color(data, "query match color")
+                .unwrap_or(default.query_match_style.fg.unwrap_or_default())),
             block: get_block(style.bg.unwrap(), "border type", "border color", data),
-            write_mode_block: get_block(
-                style.bg.unwrap(),
-                "write mode border type",
-                "write mode border color",
-                data,
-            ),
             focus_symbol: data.as_text("focus symbol").unwrap_or(default.focus_symbol),
             folder_symbol: Span::styled(
                 data.as_text("folder symbol").unwrap_or_default(),
@@ -278,6 +271,7 @@ impl ParsedConstructable for TooltipConfig {
 pub struct BehaviorConfig {
     pub case_sensitive: bool,
     pub page_size: usize,
+    pub thread_count: usize,
     pub directory_exclusion_list: Vec<PathBuf>,
 }
 
@@ -286,6 +280,7 @@ impl Default for BehaviorConfig {
         Self {
             case_sensitive: false,
             page_size: 1000,
+            thread_count: std::thread::available_parallelism().unwrap().get(),
             directory_exclusion_list: vec![PathBuf::from("/proc"), PathBuf::from("/sys")],
         }
     }
@@ -298,12 +293,16 @@ impl ParsedConstructable for BehaviorConfig {
             case_sensitive: data
                 .as_boolean("case sensitive")
                 .unwrap_or(default.case_sensitive),
+            thread_count: data
+                .as_number("thread count")
+                .unwrap_or(default.thread_count as f64)
+                .clamp(1f64, default.thread_count as f64) as usize,
             directory_exclusion_list: Config::get_ignored_paths(data)
                 .unwrap_or(default.directory_exclusion_list),
             page_size: data
                 .as_number("directory buffer size")
                 .unwrap_or(default.page_size as f64)
-                as usize,
+                .clamp(1f64, f64::INFINITY) as usize,
         }
     }
 }

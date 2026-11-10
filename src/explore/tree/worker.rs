@@ -23,7 +23,7 @@ pub struct BFSThread {
 impl BFSThread {
     pub fn spin(
         bored_queues: Arc<AtomicU64>,
-        id: u8,
+        id: usize,
         dispatcher: Sender<BFSQueueEntry>,
         exclusion_list: ExclusionList,
     ) -> Self {
@@ -39,7 +39,7 @@ impl BFSThread {
         receiver: Receiver<BFSQueueEntry>,
         bored_queues: Arc<AtomicU64>,
         exclusion_list: ExclusionList,
-        id: u8,
+        id: usize,
     ) {
         let mut queue: VecDeque<BFSQueueEntry> = VecDeque::new();
         let mask = 1 << id;

@@ -106,6 +106,16 @@ impl App {
                 }
                 self.next_update = Instant::now() + Duration::from_millis(100);
             }
+            if let Some(timestamp) = self.next_text_related_update
+                && timestamp < Instant::now()
+            {
+                self.user_state.cursor = 1;
+                self.rebuild_directories(false);
+                if self.curr_list.len() == 1 {
+                    self.user_state.cursor = 0;
+                }
+                self.next_text_related_update = None;
+            }
             terminal.draw(|frame| self.render(frame))?;
             if event::poll(Duration::from_millis(50))?
                 && let Key(key) = event::read()?

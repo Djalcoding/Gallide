@@ -67,10 +67,11 @@ impl GallideEntry {
     }
 
     pub fn from_node(
-        node: &SafeNode,
-        start_path: &OsStr,
         highlight_index: usize,
         highlight_length: usize,
+        style: &Style,
+        node: &SafeNode,
+        start_path: &OsStr,
     ) -> Self {
         let full_display_name = node
             .path()
@@ -85,7 +86,7 @@ impl GallideEntry {
             entry_type: EntryType::from_is_dir(node.is_dir()),
             display: Line::from(vec![
                 Span::from(start.to_owned()),
-                Span::styled(highlight_section.to_owned(), Style::default().blue()),
+                Span::styled(highlight_section.to_owned(), *style),
                 Span::from(end.to_owned()),
             ]),
         }

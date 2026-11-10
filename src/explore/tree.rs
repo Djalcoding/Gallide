@@ -3,14 +3,29 @@ pub mod worker;
 pub mod hierarchy {
 
     use std::{
-        borrow::Cow, cmp::Ordering::{Greater, Less}, collections::{HashMap, HashSet, VecDeque}, error::Error, ffi::OsStr, fmt::format, fs::{self, DirEntry, Metadata}, io::Result, mem::offset_of, os::unix::{process, thread}, path::{self, Path, PathBuf}, process::exit, str::CharIndices, sync::{
+        borrow::Cow,
+        cmp::Ordering::{Greater, Less},
+        collections::{HashMap, HashSet, VecDeque},
+        error::Error,
+        ffi::OsStr,
+        fmt::format,
+        fs::{self, DirEntry, Metadata},
+        io::Result,
+        mem::offset_of,
+        os::unix::{process, thread},
+        path::{self, Path, PathBuf},
+        process::exit,
+        str::CharIndices,
+        sync::{
             Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak,
             atomic::{
                 AtomicBool, AtomicU64,
                 Ordering::{self, Acquire, Relaxed},
             },
             mpsc::{Receiver, Sender, channel},
-        }, thread::{JoinHandle, sleep}, time::Duration,
+        },
+        thread::{JoinHandle, sleep},
+        time::Duration,
     };
 
     use ratatui::{
@@ -77,10 +92,12 @@ pub mod hierarchy {
             whitelist: &str,
             highlight_index: &mut Option<usize>,
         ) {
-            let offset:usize = !(start_path == "/") as usize;
+            let offset: usize = !(start_path == "/") as usize;
             if highlight_index.is_none() && self.filename_starts_with(whitelist) {
-                (*highlight_index) =
-                    Some(self.filename_index().saturating_sub(start_path.len() + offset))
+                (*highlight_index) = Some(
+                    self.filename_index()
+                        .saturating_sub(start_path.len() + offset),
+                )
             }
         }
 
@@ -206,6 +223,7 @@ pub mod hierarchy {
             start: &SafeNode,
             monitored_node: Option<SafeNode>,
             mut context: EntryCreationContext,
+            query_match_style: &Style,
         ) -> (usize, isize) {
             let length = 0;
             buffer.clear();
@@ -249,10 +267,11 @@ pub mod hierarchy {
                             processed += 1;
                             if context.skips == 0 {
                                 buffer.push(GallideEntry::from_node(
-                                    child_node,
-                                    start_path,
                                     highlight_index,
                                     context.whitelist.len(),
+                                    query_match_style,
+                                    child_node,
+                                    start_path,
                                 ));
                                 if buffer.len() == context.config.page_size {
                                     if context.explore_fully {
@@ -292,10 +311,10 @@ pub mod hierarchy {
                 None,
                 Some(Vec::with_capacity(20)),
             );
-            let thread_count: u8 = std::thread::available_parallelism().unwrap().get() as u8;
+            let thread_count = config.thread_count;
             let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
             let bored_queue_mask: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-            let mut workers: Vec<BFSThread> = Vec::with_capacity((thread_count - 1) as usize);
+            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
             for id in 0..thread_count - 1 {
                 workers.push(BFSThread::spin(
                     bored_queue_mask.clone(),
