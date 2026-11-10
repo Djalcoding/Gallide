@@ -119,13 +119,16 @@ impl App {
             false
         }
     }
-    // TODO fix bug where going down on last page causes tp
     pub fn move_down(&mut self) {
+        let on_last_entry = self.user_state.cursor == self.user_state.page_bounds.last_index();
+        let on_last_page = self.user_state.page_bounds.last_page();
         self.user_state.cursor += std::cmp::max(1, self.user_state.jump_buffer);
         self.user_state.jump_buffer = 0;
         if self.user_state.cursor >= self.user_state.page_bounds.page_end_index() {
-            if self.user_state.page_bounds.last_page() {
+            if on_last_page && on_last_entry {
                 self.user_state.cursor = 0;
+            } else if on_last_page {
+                self.user_state.cursor = self.user_state.page_bounds.last_index();
             }
             self.rebuild_directories(false);
         }

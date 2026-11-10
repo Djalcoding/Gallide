@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsStr, fmt::Display, sync::Arc};
+use std::{ffi::OsStr, fmt::Display, sync::Arc};
 
 use ratatui::{
     style::Style,
@@ -10,7 +10,6 @@ use crate::explore::{
     tree::hierarchy::SafeNode,
 };
 
-pub mod ringbuffer;
 pub mod tree;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
