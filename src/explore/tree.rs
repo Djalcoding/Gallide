@@ -3,28 +3,14 @@ pub mod worker;
 pub mod hierarchy {
 
     use std::{
-        borrow::Cow,
-        cmp::Ordering::{Greater, Less},
-        collections::{HashMap, HashSet, VecDeque},
-        error::Error,
-        ffi::OsStr,
-        fmt::format,
-        fs::{self, DirEntry, Metadata},
-        io::Result,
-        os::unix::{process, thread},
-        path::{self, Path, PathBuf},
-        process::exit,
-        str::CharIndices,
-        sync::{
+        borrow::Cow, cmp::Ordering::{Greater, Less}, collections::{HashMap, HashSet, VecDeque}, error::Error, ffi::OsStr, fmt::format, fs::{self, DirEntry, Metadata}, io::Result, mem::offset_of, os::unix::{process, thread}, path::{self, Path, PathBuf}, process::exit, str::CharIndices, sync::{
             Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak,
             atomic::{
                 AtomicBool, AtomicU64,
                 Ordering::{self, Acquire, Relaxed},
             },
             mpsc::{Receiver, Sender, channel},
-        },
-        thread::{JoinHandle, sleep},
-        time::Duration,
+        }, thread::{JoinHandle, sleep}, time::Duration,
     };
 
     use ratatui::{
@@ -93,7 +79,7 @@ pub mod hierarchy {
         ) {
             if highlight_index.is_none() && self.filename_starts_with(whitelist) {
                 (*highlight_index) =
-                    Some(self.filename_index().saturating_sub(start_path.len() + 1))
+                    Some(self.filename_index().saturating_sub(start_path.len().saturating_sub(1) + 1))
             }
         }
 
@@ -208,7 +194,7 @@ pub mod hierarchy {
             self.config.page_size * self.max_depth * 100
         }
     }
-    
+
     impl FileHierarchy {
         /// Returns spincount and remaing entries
         /// Returns a negative integer if the returned page is the last
