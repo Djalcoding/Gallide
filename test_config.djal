@@ -25,7 +25,7 @@
   searchbar border color: white 
   searchbar text color: white 
   insert searchbar border color: blue 
-  case sensitive: no
+  case sensitive: yes
   searchbar title: " Searchbar "
   searchbar background color: black 
 !! [Plain, Thick, Double, Rounded, None]
