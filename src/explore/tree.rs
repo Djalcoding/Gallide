@@ -12,7 +12,7 @@ pub mod hierarchy {
         fs::{self, DirEntry, Metadata},
         io::Result,
         mem::offset_of,
-        os::unix::{process, thread},
+        os::unix::{ffi::OsStrExt, process, thread},
         path::{self, Path, PathBuf},
         process::exit,
         str::CharIndices,
@@ -31,6 +31,7 @@ pub mod hierarchy {
     use ratatui::{
         style::{Style, Styled},
         text::{Line, Span},
+        widgets::canvas::Context,
     };
 
     use crate::{
@@ -92,12 +93,13 @@ pub mod hierarchy {
             whitelist_queries: &[&str],
             highlight_index: &mut Option<usize>,
             current_query: &mut usize,
+            case_sensitive: bool,
         ) {
             if *current_query == whitelist_queries.len() {
                 return;
             }
             let offset: usize = !(start_path == "/") as usize;
-            if self.filename_starts_with(whitelist_queries[*current_query]) {
+            if self.filename_starts_with(whitelist_queries[*current_query], case_sensitive) {
                 (*current_query) += 1;
                 if highlight_index.is_none() {
                     (*highlight_index) = Some(
@@ -154,12 +156,25 @@ pub mod hierarchy {
             }
             filename1.cmp(filename2)
         }
-        fn filename_starts_with(&self, query: &str) -> bool {
+        fn filename_starts_with(&self, query: &str, case_sensitive: bool) -> bool {
             let file_name = self.path().file_name();
             let Some(file_name) = file_name else {
                 return false;
             };
-            file_name.to_str().unwrap().starts_with(query)
+            if file_name.len() < query.len() {
+                return false;
+            }
+            let utf8_string = file_name.to_string_lossy();
+            let mut file_name_chars = utf8_string.chars();
+            query.chars().all(|q_c| {
+                file_name_chars.next().is_some_and(|f_c| {
+                    if case_sensitive {
+                        q_c == f_c
+                    } else {
+                        q_c.to_lowercase().eq(f_c.to_lowercase())
+                    }
+                })
+            })
         }
 
         fn filename_index(&self) -> usize {
@@ -254,14 +269,6 @@ pub mod hierarchy {
                     let (parent_node, mut current_query, mut parent_highlight_index) =
                         queue.pop_front().unwrap();
                     let parent_reader = parent_node.read();
-                    // if parent_node.path() != start_path {
-                    //     parent_node.satisfies_whitelist(
-                    //         start_path,
-                    //         &queries,
-                    //         &mut parent_highlight_index,
-                    //         &mut current_query,
-                    //     );
-                    // }
                     for child_node in parent_reader.children.iter().flatten() {
                         let mut child_current_query = current_query;
                         let mut child_highlight_index: Option<usize> = parent_highlight_index;
@@ -270,6 +277,7 @@ pub mod hierarchy {
                             &queries,
                             &mut child_highlight_index,
                             &mut child_current_query,
+                            context.config.case_sensitive,
                         );
                         let child_reader = child_node.read();
                         if child_current_query == queries.len()
