@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt::Display, sync::Arc};
+use std::{collections::HashMap, ffi::OsStr, fmt::Display, sync::Arc};
 
 use ratatui::{
     style::Style,
@@ -10,8 +10,8 @@ use crate::explore::{
     tree::hierarchy::SafeNode,
 };
 
-pub mod tree;
 pub mod ringbuffer;
+pub mod tree;
 
 #[derive(std::cmp::PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
@@ -96,31 +96,20 @@ impl GallideEntry {
         &self.display
     }
 }
-
-#[derive(Default, Debug)]
-pub struct Page {
-    start: isize,
-    length: usize,
-    is_end: bool,
-}
-
-impl Page {
-    pub(crate) fn start(&self) -> usize {
-        if self.start < 0 {
-            return 0;
-        }
-        self.start as usize
+#[derive(Clone, Copy, Debug)]
+pub struct PageBounds(pub usize, pub isize);
+impl PageBounds {
+    pub fn page_start_index(&self) -> usize {
+        self.0
     }
-    pub(crate) fn end(&self) -> usize {
-        self.start() + self.length
+    pub fn page_end_index(&self) -> usize {
+        self.1.unsigned_abs()
     }
-    pub(crate) fn is_end(&self) -> bool {
-        self.is_end
+    pub fn last_index(&self) -> usize {
+        let index = self.page_end_index().saturating_sub(1);
+        if index == 0 { 1 } else { index } // TODO : Find why this weird edge case happens
     }
-    pub(crate) fn size(&self) -> usize {
-        self.length
-    }
-    pub(crate) fn contains(&self, cursor: usize) -> bool {
-        cursor < self.end() && cursor >= self.start()
+    pub fn last_page(&self) -> bool {
+        self.1 < 0
     }
 }

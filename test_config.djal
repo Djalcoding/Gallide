@@ -44,4 +44,4 @@ display directory: yes
 enable searchbar: yes
 display tooltips: yes
 ignored directories: /proc, /sys
-directory buffer size: 1000
+directory buffer size: 10000

@@ -35,7 +35,7 @@ pub mod hierarchy {
     use crate::{
         config::BehaviorConfig,
         explore::{
-            EntryType, GallideEntry, GallideEntryVec, Page,
+            EntryType, GallideEntry, GallideEntryVec,
             tree::{
                 hierarchy::{self},
                 worker::{BFSQueueEntry, BFSThread},
@@ -194,47 +194,47 @@ pub mod hierarchy {
         exclusion_list: ExclusionList,
         sender: Sender<BFSQueueEntry>,
     }
-
-    pub struct EntryCreationConfig<'a> {
-        pub curr_page: &'a Page,
+    #[derive(Clone, Copy)]
+    pub struct EntryCreationContext<'a> {
         pub max_depth: usize,
+        pub skips: usize,
         pub whitelist: &'a str,
+        pub explore_fully: bool,
+        pub config: &'a BehaviorConfig,
     }
 
-    impl EntryCreationConfig<'_> {
+    impl EntryCreationContext<'_> {
         pub(crate) fn get_ideal_queue_length(&self) -> usize {
-            self.curr_page.size() * self.max_depth * 100
+            self.config.page_size * self.max_depth * 100
         }
     }
-
+    
     impl FileHierarchy {
+        /// Returns spincount and remaing entries
+        /// Returns a negative integer if the returned page is the last
+        /// Currently the most expensive operation is searching the full tree to go up
         pub fn get_entries(
             &self,
             buffer: &mut GallideEntryVec,
             start: &SafeNode,
             monitored_node: Option<SafeNode>,
-            config: EntryCreationConfig,
-        ) -> Page {
-            let mut output = Page {
-                start: -1,
-                length: 0,
-                is_end: true,
-            };
-            let mut node_position: Option<usize> = None;
+            mut context: EntryCreationContext,
+        ) -> (usize, isize) {
+            let length = 0;
             buffer.clear();
-            if config.curr_page.start() == 0 {
-                output.length += 1;
-                buffer.push(GallideEntry::previous_directory(start));
-            }
 
             let start_path = start.path().as_os_str();
-            let mut depth: usize = 1;
-            let mut skipped = 0usize;
-
             let mut queue: VecDeque<(SafeNode, Option<usize>)> =
-                VecDeque::with_capacity(config.get_ideal_queue_length());
+                VecDeque::with_capacity(context.get_ideal_queue_length());
+            let mut is_end = true;
+            let mut current_depth: usize = 1;
+            let mut spin = 0usize;
+            if context.skips == 0 {
+                buffer.push(GallideEntry::previous_directory(start));
+            }
+            let mut processed = 1usize; // '..'
             queue.push_back((start.clone(), None));
-            'main_loop: while (!queue.is_empty() && depth <= config.max_depth) {
+            'main_loop: while (!queue.is_empty() && current_depth <= context.max_depth) {
                 let size = queue.len();
                 for _ in 0..size {
                     let (parent_node, mut parent_highlight_index) = queue.pop_front().unwrap();
@@ -242,7 +242,7 @@ pub mod hierarchy {
                     if parent_node.path() != start_path {
                         parent_node.satisfies_whitelist(
                             start_path,
-                            config.whitelist,
+                            context.whitelist,
                             &mut parent_highlight_index,
                         );
                     }
@@ -250,39 +250,50 @@ pub mod hierarchy {
                         let mut child_highlight_index: Option<usize> = parent_highlight_index;
                         child_node.satisfies_whitelist(
                             start_path,
-                            config.whitelist,
+                            context.whitelist,
                             &mut child_highlight_index,
                         );
                         let child_reader = child_node.read();
                         if let Some(highlight_index) = child_highlight_index {
-                            if let Some(ref node) = monitored_node
-                                && Node::is_same(node, child_node)
+                            if processed != 0 && processed.is_multiple_of(context.config.page_size)
                             {
-                                node_position = Some(buffer.len());
+                                spin += 1;
                             }
-                            buffer.push(GallideEntry::from_node(
-                                child_node,
-                                start_path,
-                                highlight_index,
-                                config.whitelist.len(),
-                            ));
-                            if output.start == -1 {
-                                output.start = skipped as isize;
+                            processed += 1;
+                            if context.skips == 0 {
+                                buffer.push(GallideEntry::from_node(
+                                    child_node,
+                                    start_path,
+                                    highlight_index,
+                                    context.whitelist.len(),
+                                ));
+                                if buffer.len() == context.config.page_size {
+                                    if context.explore_fully {
+                                        buffer.clear();
+                                    } else {
+                                        is_end = queue.is_empty();
+                                        break 'main_loop;
+                                    }
+                                }
+                            } else {
+                                context.skips = context.skips.saturating_sub(1);
                             }
-                            output.length += 1;
-                        }
-                        if buffer.len() == self.config.page_size {
-                            output.is_end = queue.is_empty();
-                            break 'main_loop;
                         }
                         if child_reader.is_dir() {
                             queue.push_back((child_node.clone(), child_highlight_index));
                         }
                     }
                 }
-                depth += 1;
+                current_depth += 1;
             }
-            output
+            (
+                spin,
+                buffer.len() as isize
+                    * match is_end {
+                        true => -1,
+                        false => 1,
+                    },
+            )
         }
 
         pub fn new(config: &BehaviorConfig) -> Result<Self> {
@@ -375,7 +386,7 @@ pub mod hierarchy {
             config::BehaviorConfig,
             explore::{
                 GallideEntryVec,
-                tree::hierarchy::{EntryCreationConfig, FileHierarchy},
+                tree::hierarchy::{EntryCreationContext, FileHierarchy},
             },
         };
         // #[test]

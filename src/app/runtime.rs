@@ -102,7 +102,7 @@ impl App {
         while self.is_running() {
             if Instant::now() > self.next_update {
                 if self.available_entries() != self.prev_entry_count {
-                    self.rebuild_directories();
+                    self.rebuild_directories(false);
                 }
                 self.next_update = Instant::now() + Duration::from_millis(100);
             }

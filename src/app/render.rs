@@ -146,14 +146,12 @@ impl App {
 
         self.screen
             .main_box
-            .set_block(
-                self.config.main_box.block.clone().title(format!(
-                    "{} Entries, cursor : {}, page : {:?}",
-                    self.available_entries(),
-                    self.user_state.cursor,
-                    self.user_state.current_page
-                )),
-            );
+            .set_block(self.config.main_box.block.clone().title(format!(
+                "{} Entries, cursor : {}, page {:?}",
+                self.available_entries(),
+                self.user_state.cursor,
+                self.user_state.page_bounds
+            )));
         self.screen.main_box.render(
             &self.curr_list,
             *chunk_iter.next().unwrap(),
@@ -164,7 +162,10 @@ impl App {
             let area = *chunk_iter.next().unwrap();
             frame.render_widget(widget, area);
             if self.is_inserting() {
-                frame.set_cursor_position((area.x + 1 + self.user_state.search_bar_text.len() as u16,area.y + 1));
+                frame.set_cursor_position((
+                    area.x + 1 + self.user_state.search_bar_text.len() as u16,
+                    area.y + 1,
+                ));
             }
         }
         if let Some(widget) = &self.screen.tooltips {

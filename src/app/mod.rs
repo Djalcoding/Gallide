@@ -4,8 +4,8 @@ use crate::{
     app::render::Screen,
     config::Config,
     explore::{
-        EntryType, GallideEntry, GallideEntryVec, Page,
-        tree::hierarchy::{EntryCreationConfig, FileHierarchy, SafeNode},
+        EntryType, GallideEntry, GallideEntryVec, PageBounds,
+        tree::hierarchy::{EntryCreationContext, FileHierarchy, SafeNode},
     },
 };
 use std::{path::PathBuf, time::Instant};
@@ -21,14 +21,12 @@ pub enum Mode {
     DISCARD,
 }
 
-
 pub struct UserState {
-    pinned: bool,
     depth: u8,
     mode: Mode,
-    current_page: Page,
     jump_buffer: usize,
     cursor: usize,
+    page_bounds: PageBounds,
     search_bar_text: String,
     question_box_text: String,
 }
@@ -51,19 +49,16 @@ impl App {
         let file_hierarchy = FileHierarchy::new(&config.behavior).unwrap(); // This starts a worker thread
         let mut app = App {
             user_state: UserState {
-                pinned: false,
                 cursor: 0,
+                page_bounds: PageBounds(0, 1),
                 jump_buffer: 0,
                 depth: config.main_box.default_depth,
                 search_bar_text: String::new(),
                 mode: Mode::SELECTING,
-                current_page: Page::default(),
                 question_box_text: String::new(),
             },
             curr_node: file_hierarchy.root.clone(),
-            curr_list: GallideEntryVec::from([GallideEntry::previous_directory(
-                &file_hierarchy.root,
-            )]),
+            curr_list: GallideEntryVec::with_capacity(config.behavior.page_size),
             file_hierarchy,
             running: true,
             exited: false,
@@ -74,7 +69,7 @@ impl App {
         };
         app.user_state.search_bar_text.reserve(200);
         app.user_state.question_box_text.reserve(200);
-        app.rebuild_directories();
+        app.rebuild_directories(false);
 
         app.screen
             .build_search_bar(false, String::new(), &app.config.search_bar);
@@ -84,7 +79,9 @@ impl App {
     }
 
     pub fn selected_index(&self) -> usize {
-        self.user_state.cursor % self.user_state.current_page.size()
+        self.user_state
+            .cursor
+            .saturating_sub(self.user_state.page_bounds.page_start_index())
     }
 
     pub fn current_directory(&self) -> PathBuf {
@@ -122,71 +119,70 @@ impl App {
             false
         }
     }
-
-    // TODO move this and else to UserState
+    // TODO fix bug where going down on last page causes tp
     pub fn move_down(&mut self) {
-        self.user_state.pinned = false;
-        let on_end = self.on_list_end();
         self.user_state.cursor += std::cmp::max(1, self.user_state.jump_buffer);
         self.user_state.jump_buffer = 0;
-        if on_end {
-            self.user_state.cursor = 0;
-        }
-        if !self
-            .user_state
-            .current_page
-            .contains(self.user_state.cursor)
-        {
-            self.rebuild_directories();
+        if self.user_state.cursor >= self.user_state.page_bounds.page_end_index() {
+            if self.user_state.page_bounds.last_page() {
+                self.user_state.cursor = 0;
+            }
+            self.rebuild_directories(false);
         }
     }
 
     pub fn move_up(&mut self) {
-        self.user_state.pinned = false;
-        let on_start = self.user_state.cursor == 0;
+        let at_start = self.user_state.cursor == 0;
         self.user_state.cursor = self
             .user_state
             .cursor
             .saturating_sub(std::cmp::max(1, self.user_state.jump_buffer));
         self.user_state.jump_buffer = 0;
-        if on_start {
-            self.user_state.pinned = true;
-            self.rebuild_directories();
-            return;
-        }
-        if !self
-            .user_state
-            .current_page
-            .contains(self.user_state.cursor)
-        {
-            self.rebuild_directories();
+        if at_start || self.user_state.cursor < self.user_state.page_bounds.page_start_index() {
+            self.rebuild_directories(at_start);
         }
     }
 
     pub fn increase_depth(&mut self) {
         self.user_state.depth = self.user_state.depth.saturating_add(1);
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
     pub fn decrease_depth(&mut self) {
         if self.user_state.depth != 1 {
             self.user_state.depth -= 1;
         }
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
-    pub(super) fn rebuild_directories(&mut self) {
-        let config = EntryCreationConfig {
+    pub(super) fn rebuild_directories(&mut self, goto_end: bool) {
+        let page_start = (self.user_state.cursor / self.config.behavior.page_size)
+            * self.config.behavior.page_size;
+        let mut config = EntryCreationContext {
             whitelist: &self.user_state.search_bar_text,
-            curr_page: &self.user_state.current_page,
             max_depth: self.user_state.depth as usize,
+            skips: page_start.saturating_sub(1),
+            config: &self.config.behavior,
+            explore_fully: goto_end,
         };
+        if goto_end {
+            config.skips = 0;
+        }
         let selected_node = self.selected_entry().map(|entry| entry.node.clone());
-        self.user_state.current_page = self.file_hierarchy.get_entries(
+        let (spins, end_position) = self.file_hierarchy.get_entries(
             &mut self.curr_list,
             &self.curr_node,
             selected_node,
             config,
         );
+        self.user_state.page_bounds.0 = spins * self.config.behavior.page_size;
+        self.user_state.page_bounds.1 =
+            (end_position.abs() + self.user_state.page_bounds.0 as isize) * end_position.signum();
+        if goto_end {
+            self.user_state.cursor = self.user_state.page_bounds.last_index();
+        }
         self.prev_entry_count = self.available_entries();
+        if self.curr_list.is_empty() {
+            self.rebuild_directories(true);
+        }
     }
 
     pub fn available_entries(&self) -> usize {
@@ -206,19 +202,19 @@ impl App {
         self.next_update = Instant::now();
         self.curr_node = new_root;
         self.user_state.cursor = 1;
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
 
     pub fn backspace(&mut self) {
         self.user_state.search_bar_text.pop();
         self.rebuild_searchbar();
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
 
     pub fn add_character(&mut self, character: char) {
         self.user_state.search_bar_text.push(character);
         self.rebuild_searchbar();
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
 
     fn rebuild_searchbar(&mut self) {
@@ -227,11 +223,6 @@ impl App {
             self.user_state.search_bar_text.clone(),
             &self.config.search_bar,
         );
-    }
-
-    fn on_list_end(&self) -> bool {
-        self.user_state.current_page.is_end()
-            && self.user_state.cursor == self.user_state.current_page.end()
     }
 
     pub fn stop(&mut self) {
@@ -262,7 +253,7 @@ impl App {
             None => self.curr_node.clone(),
         };
         self.user_state.cursor = 0;
-        self.rebuild_directories();
+        self.rebuild_directories(false);
     }
     pub fn get_bash_string(&self) -> String {
         format!(
