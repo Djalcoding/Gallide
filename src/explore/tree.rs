@@ -77,9 +77,10 @@ pub mod hierarchy {
             whitelist: &str,
             highlight_index: &mut Option<usize>,
         ) {
+            let offset:usize = !(start_path == "/") as usize;
             if highlight_index.is_none() && self.filename_starts_with(whitelist) {
                 (*highlight_index) =
-                    Some(self.filename_index().saturating_sub(start_path.len().saturating_sub(1) + 1))
+                    Some(self.filename_index().saturating_sub(start_path.len() + offset))
             }
         }
 
