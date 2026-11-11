@@ -20,9 +20,7 @@ mod runtime;
 #[derive(PartialEq, Clone)]
 pub enum Mode {
     INSERT,
-    WRITING,
     SELECTING,
-    DISCARD,
 }
 
 pub struct UserState {
@@ -57,7 +55,7 @@ impl App {
                 cursor: 0,
                 page_bounds: PageBounds(0, 1),
                 jump_buffer: 0,
-                depth: config.main_box.default_depth,
+                depth: config.main_box.start_depth,
                 search_bar_text: String::new(),
                 mode: Mode::SELECTING,
                 question_box_text: String::new(),
@@ -112,10 +110,6 @@ impl App {
             return true;
         }
         false
-    }
-
-    pub fn is_in_write_mode(&self) -> bool {
-        matches!(self.user_state.mode, Mode::DISCARD | Mode::WRITING,)
     }
 
     pub fn is_selecting_directory(&self) -> bool {
@@ -181,7 +175,7 @@ impl App {
             &self.curr_node,
             selected_node,
             config,
-            &self.config.main_box.query_match_style,
+            &self.config.main_box,
         );
         self.user_state.page_bounds.0 = spins * self.config.behavior.page_size;
         self.user_state.page_bounds.1 =
@@ -209,7 +203,6 @@ impl App {
             Some(node) => node.upgrade().unwrap().clone(),
             None => self.file_hierarchy.step_back(),
         };
-        self.next_update = Instant::now();
         self.curr_node = new_root;
         self.user_state.cursor = 1;
         self.rebuild_directories(false);

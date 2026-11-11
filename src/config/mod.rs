@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use djal_parser::{datastructure::ParsedData, error_handling::ParsingError};
+use djal_parser::{Result, datastructure::ParsedData,parse::ConfigConstructible};
 use ratatui::{
     style::{Color, Style, Stylize},
     text::Span,
@@ -22,7 +22,7 @@ fn white_on_black() -> Style {
 type DColor = djal_parser::color::Color;
 type TColor = ratatui::style::Color;
 
-pub fn tui_color(djal_color: Result<DColor, ParsingError>) -> Result<TColor, ParsingError> {
+pub fn tui_color(djal_color: Result<DColor>) -> Result<TColor> {
     let color: DColor = djal_color?;
     Ok(match color {
         DColor::RGB(r, g, b) => Color::Rgb(r, g, b),
@@ -48,30 +48,39 @@ pub fn tui_color(djal_color: Result<DColor, ParsingError>) -> Result<TColor, Par
     })
 }
 
-fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor, ParsingError> {
-    tui_color(data.as_color(name))
+fn get_color<'a>(data: &'a ParsedData, name: &'a str) -> Result<TColor> {
+    tui_color(data.read_as::<DColor>(name))
 }
 
-pub fn get_border_type(key: &str, data_map: &ParsedData) -> Option<BorderType> {
-    let (_, raw_border_value) = data_map.as_raw(key).unwrap_or((0, "plain"));
+pub struct OptionalBorder(pub Option<BorderType>);
 
-    match raw_border_value.to_lowercase().as_str() {
-        "rounded" => Some(BorderType::Rounded),
-        "plain" => Some(BorderType::Plain),
-        "thick" => Some(BorderType::Thick),
-        "double" => Some(BorderType::Double),
-        "light2" => Some(BorderType::LightDoubleDashed),
-        "light3" => Some(BorderType::LightTripleDashed),
-        "light4" => Some(BorderType::LightQuadrupleDashed),
-        "heavy2" => Some(BorderType::HeavyDoubleDashed),
-        "heavy3" => Some(BorderType::HeavyTripleDashed),
-        "heavy4" => Some(BorderType::HeavyQuadrupleDashed),
-        "inquad" => Some(BorderType::QuadrantInside),
-        "outquad" => Some(BorderType::QuadrantOutside),
-        "none" => None,
-        _ => Some(BorderType::Plain),
+impl OptionalBorder {
+    fn unwrap(self) -> Option<BorderType> {
+        self.0
     }
 }
+
+impl ConfigConstructible for OptionalBorder {
+    fn parse(raw_data: &str) -> std::prelude::v1::Result<Self, Box<dyn std::error::Error>> {
+        Ok(OptionalBorder(match raw_data.to_lowercase().as_str() {
+            "rounded" => Some(BorderType::Rounded),
+            "plain" => Some(BorderType::Plain),
+            "thick" => Some(BorderType::Thick),
+            "double" => Some(BorderType::Double),
+            "light2" => Some(BorderType::LightDoubleDashed),
+            "light3" => Some(BorderType::LightTripleDashed),
+            "light4" => Some(BorderType::LightQuadrupleDashed),
+            "heavy2" => Some(BorderType::HeavyDoubleDashed),
+            "heavy3" => Some(BorderType::HeavyTripleDashed),
+            "heavy4" => Some(BorderType::HeavyQuadrupleDashed),
+            "inquad" => Some(BorderType::QuadrantInside),
+            "outquad" => Some(BorderType::QuadrantOutside),
+            "none" => None,
+            _ => Some(BorderType::Plain),
+        }))
+    }
+}
+
 pub fn get_style(background_key: &str, foreground_key: &str, data: &ParsedData) -> Style {
     Style::default()
         .bg(get_color(data, background_key).unwrap_or(Color::Black))
@@ -84,7 +93,7 @@ pub fn get_block(
     color_key: &str,
     data: &ParsedData,
 ) -> Block<'static> {
-    let borders = get_border_type(border_key, data);
+    let borders = data.read_as::<OptionalBorder>(border_key).unwrap().unwrap(); // always safe
     Block::default()
         .style(
             Style::default()
@@ -120,7 +129,7 @@ impl ParsedConstructable for DirectoryLineConfig {
     fn from_file(data: &ParsedData) -> Self {
         Self {
             display: data
-                .as_boolean("display directory")
+                .read_as::<bool>("display directory")
                 .unwrap_or(Self::default().display),
         }
     }
@@ -134,8 +143,7 @@ pub struct MainBoxConfig {
     pub folder_symbol: Span<'static>,
     pub file_symbol: Span<'static>,
     pub block: Block<'static>,
-    pub display_file_size: bool,
-    pub default_depth: u8,
+    pub start_depth: u8,
 }
 impl Default for MainBoxConfig {
     fn default() -> Self {
@@ -147,8 +155,7 @@ impl Default for MainBoxConfig {
             focus_symbol: String::from("> "),
             folder_symbol: Span::from("").style(white_on_black()),
             file_symbol: Span::from("").style(white_on_black()),
-            display_file_size: true,
-            default_depth: 1,
+            start_depth: 1,
         }
     }
 }
@@ -167,22 +174,22 @@ impl ParsedConstructable for MainBoxConfig {
             highlight_style,
             query_match_style: Style::default().fg(get_color(data, "query match color")
                 .unwrap_or(default.query_match_style.fg.unwrap_or_default())),
-            block: get_block(style.bg.unwrap(), "border type", "border color", data),
-            focus_symbol: data.as_text("focus symbol").unwrap_or(default.focus_symbol),
+            block: get_block(style.bg.unwrap(), "border type", "border color", data)
+                .title(data.read_as::<String>("main box title").unwrap_or_default()),
+            focus_symbol: data
+                .read_as::<String>("focus symbol")
+                .unwrap_or(default.focus_symbol),
             folder_symbol: Span::styled(
-                data.as_text("folder symbol").unwrap_or_default(),
+                data.read_as::<String>("folder symbol").unwrap_or_default(),
                 Style::default().fg(folder_symbol_color),
             ),
             file_symbol: Span::styled(
-                data.as_text("file symbol").unwrap_or_default(),
+                data.read_as::<String>("file symbol").unwrap_or_default(),
                 Style::default().fg(file_symbol_color),
             ),
-            display_file_size: data
-                .as_boolean("display file size")
-                .unwrap_or(default.display_file_size),
-            default_depth: data
-                .as_number("default depth")
-                .unwrap_or(default.default_depth as f64) as u8,
+            start_depth: data
+                .read_as::<u8>("start depth")
+                .unwrap_or(default.start_depth),
         }
     }
 }
@@ -210,7 +217,7 @@ impl ParsedConstructable for SearchBarConfig {
         let default: Self = Self::default();
         let style = get_style("searchbar background color", "searchbar text color", data);
         let title = data
-            .as_text("searchbar title")
+            .read_as::<String>("searchbar title")
             .unwrap_or(String::from("Searchbar"));
         Self {
             style,
@@ -223,13 +230,13 @@ impl ParsedConstructable for SearchBarConfig {
             .title(title.clone()),
             insert_mode_block: get_block(
                 style.bg.unwrap(),
-                "searchbar border type", // TODO : change this
+                "searchbar border type",
                 "insert searchbar border color",
                 data,
             )
             .title(title),
             enabled: data
-                .as_boolean("enable searchbar")
+                .read_as::<bool>("enable searchbar")
                 .unwrap_or(default.enabled),
         }
     }
@@ -256,7 +263,7 @@ impl ParsedConstructable for TooltipConfig {
         let default: Self = Self::default();
         Self {
             display: data
-                .as_boolean("display tooltips")
+                .read_as::<bool>("display tooltips")
                 .unwrap_or(default.display),
             text_color: get_color(data, "tooltip text color").unwrap_or(default.text_color),
             keybind_color: get_color(data, "tooltip keybind color")
@@ -290,19 +297,19 @@ impl ParsedConstructable for BehaviorConfig {
     fn from_file(data: &ParsedData) -> Self {
         let default: Self = Self::default();
         Self {
+            page_size: data
+                .read_as::<usize>("page size")
+                .unwrap_or(default.page_size)
+                .clamp(1, usize::MAX),
             case_sensitive: data
-                .as_boolean("case sensitive")
+                .read_as::<bool>("case sensitive")
                 .unwrap_or(default.case_sensitive),
             thread_count: data
-                .as_number("thread count")
-                .unwrap_or(default.thread_count as f64)
-                .clamp(1f64, default.thread_count as f64) as usize,
+                .read_as::<usize>("thread count")
+                .unwrap_or(default.thread_count)
+                .clamp(1, default.thread_count),
             directory_exclusion_list: Config::get_ignored_paths(data)
                 .unwrap_or(default.directory_exclusion_list),
-            page_size: data
-                .as_number("directory buffer size")
-                .unwrap_or(default.page_size as f64)
-                .clamp(1f64, f64::INFINITY) as usize,
         }
     }
 }
@@ -317,7 +324,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_file(path: &'_ Path) -> Result<Config, ParsingError> {
+    pub fn from_file(path: &'_ Path) -> Result<Config> {
         let parsed_data = ParsedData::from_file(path)?;
         Ok(Config {
             behavior: BehaviorConfig::from_file(&parsed_data),
@@ -328,7 +335,7 @@ impl Config {
         })
     }
     /// Ignored paths must have no "" around them
-    fn get_ignored_paths(parsed_data: &ParsedData) -> Result<Vec<PathBuf>, ParsingError> {
+    fn get_ignored_paths(parsed_data: &ParsedData) -> Result<Vec<PathBuf>> {
         let (_, array) = parsed_data.as_raw_array("ignored directories")?;
         let mut output: Vec<PathBuf> = Vec::with_capacity(array.len());
         for directory in array {

@@ -1,23 +1,19 @@
-!! Main Box
-  text color: white 
-  border color: white
-  background color: black 
-  display file size: yes
-  default depth: 1
-!! [Plain, Thick, Double, Rounded, None] 
-  border type: Plain
-!! Main Box (Write mode)
-  write mode border type: Plain
-  write mode border color: white
-  write mode title: ""
+!! Border types are [Plain, Thick, Double, Rounded, None] 
 
-!! Focus (Underline entries)
+!! Main Box
+  main box title: default 
+  background color: black 
+  text color: white 
+  border type: Plain
+  border color: white
+
+!! Focus
   focus color: white 
   focus text color: black
   focus text: "> " 
+  query match color: blue
 
 !! Directories
-  main title: " Directories "
   folder symbol: "" 
   folder symbol color: white 
 
@@ -26,21 +22,21 @@
   file symbol color: white 
 
 !! Search bar
-  searchbar border color: white 
-  searchbar text color: white 
-  insert searchbar border color: red 
-  case sensitive: no
   searchbar title: " Searchbar "
   searchbar background color: black 
-!! [Plain, Thick, Double, Rounded, None]
-  searchbar border type: Plain
+  searchbar text color: white 
+  searchbar border type: plain
+  searchbar border color: white 
+  insert searchbar border color: red 
+  enable searchbar: yes
+  case sensitive: no
 
 !! Tool Tips
   tooltip text color: black 
   tooltip keybind color: white
   tooltip highlight color: white 
+  display tooltips: yes
 
+start depth: 1
 display directory: yes
-enable searchbar: yes
-display tooltips: yes
 ignored directories: /proc, /sys

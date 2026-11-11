@@ -146,8 +146,11 @@ impl EntryList<'_> {
                 width: row_area.width.saturating_sub(highlight_symbol_width),
                 ..row_area
             };
-            Widget::render(item.display().clone(), item_area, buf);
-
+            Widget::render(
+                item.display(is_selected, self.highlight_style),
+                item_area,
+                buf,
+            );
             let line = if is_selected {
                 highlight_symbol
             } else {
@@ -284,8 +287,8 @@ impl EntryList<'_> {
     }
 }
 
-impl Default for  EntryList<'_>{
+impl Default for EntryList<'_> {
     fn default() -> Self {
         EntryList::new()
-    } 
+    }
 }

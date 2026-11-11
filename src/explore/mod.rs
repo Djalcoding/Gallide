@@ -5,9 +5,12 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use crate::explore::{
-    EntryType::{File, Folder},
-    tree::hierarchy::SafeNode,
+use crate::{
+    config::MainBoxConfig,
+    explore::{
+        EntryType::{File, Folder},
+        tree::hierarchy::SafeNode,
+    },
 };
 
 pub mod tree;
@@ -39,7 +42,7 @@ impl Display for EntryType {
 
 pub struct GallideEntry {
     pub node: SafeNode,
-    display: Line<'static>,
+    display: Vec<Span<'static>>,
     pub entry_type: EntryType,
 }
 pub type GallideEntryVec = Vec<GallideEntry>;
@@ -54,24 +57,16 @@ impl GallideEntry {
                 .unwrap_or(Arc::downgrade(start))
                 .upgrade()
                 .unwrap(),
-            display: Line::from(".."),
+            display: vec![Span::from("..")],
             entry_type: EntryType::SpecialSign,
         }
     }
-    pub fn new(node: SafeNode, display: Line<'static>, entry_type: EntryType) -> Self {
-        GallideEntry {
-            node,
-            display,
-            entry_type,
-        }
-    }
-
     pub fn from_node(
         highlight_index: usize,
         highlight_length: usize,
-        style: &Style,
         node: &SafeNode,
         start_path: &OsStr,
+        config: &MainBoxConfig,
     ) -> Self {
         let full_display_name = node
             .path()
@@ -81,19 +76,29 @@ impl GallideEntry {
             .to_string();
         let (start, string_remainder) = full_display_name.split_at(highlight_index);
         let (highlight_section, end) = string_remainder.split_at(highlight_length);
+        let entry_type = EntryType::from_is_dir(node.is_dir());
         GallideEntry {
             node: node.clone(),
-            entry_type: EntryType::from_is_dir(node.is_dir()),
-            display: Line::from(vec![
+            display: vec![
+                match entry_type {
+                    EntryType::File => config.file_symbol.clone(),
+                    EntryType::Folder => config.folder_symbol.clone(),
+                    _ => Span::from(".."),
+                },
                 Span::from(start.to_owned()),
-                Span::styled(highlight_section.to_owned(), *style),
+                Span::styled(highlight_section.to_owned(), config.query_match_style),
                 Span::from(end.to_owned()),
-            ]),
+            ],
+            entry_type,
         }
     }
     pub fn set_type(&mut self) {}
-    pub fn display(&self) -> &Line<'static> {
-        &self.display
+    pub fn display(&self, selected: bool, highlight_style: Style) -> Line<'static> {
+        let mut display_vec = self.display.clone();
+        if selected && display_vec[0].style.fg == highlight_style.bg {
+            display_vec[0] = display_vec[0].clone().style(highlight_style);
+        }
+        Line::from(display_vec)
     }
 }
 #[derive(Clone, Copy, Debug)]

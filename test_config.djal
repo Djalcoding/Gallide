@@ -13,13 +13,13 @@
   focus text: "> " 
 
 !! Directories
-  main title: " Directories "
-  folder symbol: "" 
-  folder symbol color: white 
+  main box title: " Gallide "
+  folder symbol: "D " 
+  folder symbol color: blue 
 
 !! Files
-  file symbol : ""
-  file symbol color: white 
+  file symbol : "F "
+  file symbol color: orange 
 
 !! Search bar
   searchbar border color: white 

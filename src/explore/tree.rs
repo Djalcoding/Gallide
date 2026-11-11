@@ -35,8 +35,7 @@ pub mod hierarchy {
     };
 
     use crate::{
-        config::BehaviorConfig,
-        explore::{
+        config::{BehaviorConfig, MainBoxConfig}, explore::{
             EntryType, GallideEntry, GallideEntryVec,
             tree::{
                 hierarchy::{self},
@@ -247,7 +246,7 @@ pub mod hierarchy {
             start: &SafeNode,
             monitored_node: Option<SafeNode>,
             mut context: EntryCreationContext,
-            query_match_style: &Style,
+            style_config: &MainBoxConfig,
         ) -> (usize, isize) {
             let length = 0;
             buffer.clear();
@@ -292,11 +291,12 @@ pub mod hierarchy {
                                 buffer.push(GallideEntry::from_node(
                                     highlight_index,
                                     context.whitelist.len(),
-                                    query_match_style,
                                     child_node,
                                     start_path,
+                                    style_config,
+                                    
                                 ));
-                                if buffer.len() == context.config.page_size {
+                                if buffer.len() == context.config.page_size  {
                                     if context.explore_fully {
                                         buffer.clear();
                                     } else {
@@ -341,7 +341,7 @@ pub mod hierarchy {
             let thread_count = config.thread_count;
             let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
             let bored_queue_mask: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
+            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count- 1);
             for id in 0..thread_count - 1 {
                 workers.push(BFSThread::spin(
                     bored_queue_mask.clone(),

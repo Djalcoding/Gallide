@@ -111,12 +111,6 @@ impl Screen {
                 Span::styled(": ENTER↵/l/→  ", keybind_style),
                 Span::styled("Go back", header_style),
                 Span::styled(": h/←  ", keybind_style),
-                Span::styled("Create", header_style),
-                Span::styled(": a  ", keybind_style),
-                Span::styled("Remove", header_style),
-                Span::styled(": d  ", keybind_style),
-                Span::styled("Rename", header_style),
-                Span::styled(": r  ", keybind_style),
                 Span::styled("Depth", header_style),
                 Span::styled(": +/-  ", keybind_style),
             ]))
@@ -146,12 +140,7 @@ impl App {
 
         self.screen
             .main_box
-            .set_block(self.config.main_box.block.clone().title(format!(
-                "{} Entries, cursor : {}, page {:?}",
-                self.available_entries(),
-                self.user_state.cursor,
-                self.user_state.page_bounds
-            )));
+            .set_block(self.config.main_box.block.clone());
         self.screen.main_box.render(
             &self.curr_list,
             *chunk_iter.next().unwrap(),
