@@ -3,10 +3,11 @@ SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$HOME/.cargo/bin/gallide-bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
+CONFIG_FILENAME="gallide.conf"
 
 
 display_version() {
-    echo "gallide 1.5"
+    echo "gallide 2.0"
 }
 display_help() {
         display_version
@@ -20,6 +21,9 @@ display_help() {
         echo "Using a configuration :"
         echo "  configs located in $HOME/.config/gallide.conf or $HOME/.config/gallide/gallide.conf"
         echo "  will be automaticly detected and used unless overriden with the --config option"
+        echo "Using a file opener:"
+        echo "  if \$EDITOR and \$VISUAL both aren't defined cat will be used"
+        echo "  (currently : '$EDITOR' ; '$VISUAL')"
         echo ""
         echo "Report bugs to : dbdevbugs@gmail.com"
 }
@@ -40,10 +44,10 @@ explorer=cd
 config_path=""
 open_file_dir=false
 
-if test -f "$HOME/.config/gallide.conf"; then
-    config_path="$HOME/.config/gallide.conf";
-elif test -f "$HOME/.config/gallide/gallide.conf"; then
-    config_path="$HOME/.config/gallide/gallide.conf";
+if test -f "$HOME/.config/$CONFIG_FILENAME"; then
+    config_path="$HOME/.config/$CONFIG_FILENAME";
+elif test -f "$HOME/.config/gallide/$CONFIG_FILENAME"; then
+    config_path="$HOME/.config/gallide/$CONFIG_FILENAME";
 fi
 
 if test -x "$BIN"; then
@@ -52,7 +56,7 @@ elif test -f "/lib/gallide/gallide-bin"; then
     BIN="/lib/gallide/gallide-bin"
 else
     echo "could not use gallide binary, try reinstalling gallide"
-    echo "gallide should be in $BIN or /lib/gallide/gallide-bin"
+    echo "gallide binary should be in '$BIN' or '/lib/gallide/gallide-bin'"
     quit || return
 fi
 
@@ -92,7 +96,7 @@ if [ $found_conf = "true" ]; then
 fi
 
 if [[ $directory_path != "" ]]; then
-    if [[ "$(alias "$explorer" 2>/dev/null)" =~ ^alias[[:space:]]cd.*g ]]; then
+    if [[ "$(alias "$explorer" 2>/dev/null)" =~ ^alias[[:space:]]cd.*g ]]; then # handle recursive aliasing
         command "$explorer" "$directory_path"
     else 
         "$explorer" "$directory_path"
@@ -102,19 +106,19 @@ fi
 
 LOGFILE="$(\mktemp /tmp/gallide_out.XXXXXX)"
 if [[ $config_path == "" ]]; then
-    "$BIN" 1>/dev/tty 2>$LOGFILE # This actually runs the program
+    "$BIN" 1>/dev/tty 2>"$LOGFILE" # This actually runs the program
 else
-    "$BIN" "$config_path" 1>/dev/tty 2>$LOGFILE # This actually runs the program
+    "$BIN" "$config_path" 1>/dev/tty 2>"$LOGFILE" # This actually runs the program
 fi
 
 EXIT_CODE=$?
+OUTPUT=$(\cat "$LOGFILE")
 
 if [ $EXIT_CODE -ne 0 ]; then
     >&2 echo "Program crashed unexpectedly : ($EXIT_CODE) $OUTPUT" 
     quit $EXIT_CODE || return $EXIT_CODE
 fi
 
-OUTPUT=$(\cat "$LOGFILE")
 ITEM_TYPE=${OUTPUT:0:2}
 ITEM_PATH=${OUTPUT:2}
 
@@ -126,7 +130,7 @@ else
 fi
 
 
-if [[ $ITEM_TYPE == $DIRECTORY_REP ]]; then
+if [[ "$ITEM_TYPE" == "$DIRECTORY_REP" ]]; then
     \cd "$ITEM_PATH"
 elif [[ "$ITEM_TYPE" == $FILE_REP ]]; then
     if [ $open_file_dir = "true" ]; then

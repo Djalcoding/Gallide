@@ -1,7 +1,8 @@
 #!/bin/bash
 INSTALLATION_FILE="$HOME/.local/bin/gallide"
 CONFIG_DIR="$HOME/.config/gallide"
-CONFIG_FILE="$CONFIG_DIR/gallide.conf"
+CONFIG_FILE_NAME="gallide.djal"
+CONFIG_FILE="$CONFIG_DIR/$CONFIG_FILE_NAME"
 
 if [[ "$1" == "--uninstall" ]]; then
     cargo uninstall gallide-bin
@@ -23,7 +24,7 @@ cargo install gallide-bin || { echo "Failed to fetch gallide binary from crates.
 if ! test -f "$INSTALLATION_FILE"; then
     touch "$INSTALLATION_FILE" || { echo "Failed to create gallide.sh in bin, exiting..."; exit; }
 fi
-curl -L "https://github.com/Djalcoding/Gallide/releases/latest/download/gallide.sh" --output "$INSTALLATION_FILE" || { echo "Failed to fetch bash file from github,exiting..."; exit; }
+curl -L "https://github.com/Djalcoding/Gallide/releases/latest/download/gallide.sh" --output "$INSTALLATION_FILE" || { echo "Failed to fetch bash executable from github, exiting..."; exit; }
 FILESIZE=$(stat --printf="%s" $INSTALLATION_FILE)
 if [ $FILESIZE = 0 ]; then
     echo "could not write to $INSTALLATION_FILE, exiting..."
@@ -37,7 +38,7 @@ if ! test -d "$CONFIG_DIR"; then
 fi
 if ! test -f "$CONFIG_FILE" || [[ "$1" == "--rebuild-config" ]]; then
     touch "$CONFIG_FILE"
-    curl -L "https://github.com/Djalcoding/Gallide/releases/latest/download/gallide.conf" --output "$CONFIG_FILE" || echo "Failed to fetch config file from github" 
+    curl -L "https://github.com/Djalcoding/Gallide/releases/latest/download/$CONFIG_FILE_NAME" --output "$CONFIG_FILE" || echo "Failed to fetch config file from github" 
     FILESIZE=$(stat --printf="%s" $CONFIG_FILE)
     if [ $FILESIZE = 0 ]; then
         echo "could not write to $CONFIG_FILE"
