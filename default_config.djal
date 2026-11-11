@@ -1,4 +1,6 @@
-!! Border types are [Plain, Thick, Double, Rounded, None] 
+!! Border types are 
+!! [Plain, Thick, Double, Rounded, Light2, Light3, Light4, 
+!! Heavy2, Heavy3, Heavy4, Inquad, Outquad, None] 
 
 !! Main Box
   main box title: default 

@@ -1,12 +1,12 @@
 !! Main Box
-  text color: white 
+  text color: orange 
   border color: white
   background color: black 
   display file size: yes
   default depth: 1
   query match color: red
 !! [Plain, Thick, Double, Rounded, None] 
-  border type: Plain
+  border type: outquad
 !! Focus (Underline entries)
   focus color: white 
   focus text color: black
