@@ -3,7 +3,7 @@ SCRIPT_DIR="$(\cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$HOME/.cargo/bin/gallide-bin"
 DIRECTORY_REP="D'"
 FILE_REP="F'"
-CONFIG_FILENAME="gallide.conf"
+CONFIG_FILENAME="gallide.djal"
 
 
 display_version() {
