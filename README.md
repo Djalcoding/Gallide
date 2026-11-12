@@ -11,6 +11,8 @@ Instead of repeatedly typing `cd`, `ls`, and `clear` to navigate your files, you
 ## Showcase
 [Video](https://github.com/user-attachments/assets/438bba9a-3c0f-4b8f-ac58-af76d269a673)
 
+[Another Video]([Screencast_20261111_193402.webm](https://github.com/user-attachments/assets/dda4bb7a-e95f-4714-8043-8a70ce731cf8))
+
 
 ## Features
    - **TUI for viewing files and directories**
