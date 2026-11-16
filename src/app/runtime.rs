@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::atomic::Ordering::Acquire,
+    time::{Duration, Instant},
+};
 
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::DefaultTerminal;
@@ -71,11 +74,11 @@ impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         while self.is_running() {
             if Instant::now() > self.next_update {
-                if self.available_entries() != self.prev_entry_count {
+                let new_entries = self.file_hierarchy.unread_updates.fetch_and(0, Acquire);
+                if new_entries != 0 {
                     self.rebuild_directories(false);
                 }
-                self.next_update = Instant::now() + Duration::from_millis(100); // TODO check if I
-                // can increase this
+                self.next_update = Instant::now() + Duration::from_millis(150);
             }
             if let Some(timestamp) = self.next_text_related_update
                 && timestamp < Instant::now()

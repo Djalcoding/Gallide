@@ -35,7 +35,8 @@ pub mod hierarchy {
     };
 
     use crate::{
-        config::{BehaviorConfig, MainBoxConfig}, explore::{
+        config::{BehaviorConfig, MainBoxConfig},
+        explore::{
             EntryType, GallideEntry, GallideEntryVec,
             tree::{
                 hierarchy::{self},
@@ -47,16 +48,11 @@ pub mod hierarchy {
     pub struct Node {
         pub(crate) parent: Option<WeakSafeNode>,
         pub(crate) children: Option<Vec<SafeNode>>,
-        pub(crate) depths: Vec<usize>,
     }
 
     impl Node {
         fn new(parent: Option<WeakSafeNode>, children: Option<Vec<SafeNode>>) -> Node {
-            Node {
-                parent,
-                children,
-                depths: vec![1, 0],
-            }
+            Node { parent, children }
         }
 
         pub fn is_same(left: &SafeNode, right: &SafeNode) -> bool {
@@ -65,18 +61,6 @@ pub mod hierarchy {
 
         pub fn is_dir(&self) -> bool {
             self.children.is_some()
-        }
-
-        pub fn get_nested_entries(&self, depth: usize) -> usize {
-            let mut sum = 1;
-            for index in 1..=std::cmp::min(self.depths.len() - 1, depth) {
-                sum += self.depths[index];
-            }
-            sum
-        }
-
-        pub fn nested_entries(&self) -> usize {
-            self.get_nested_entries(self.depths.len() - 1)
         }
     }
     pub struct TreeNode {
@@ -183,31 +167,6 @@ pub mod hierarchy {
                     None => 0,
                 }
         }
-
-        pub(crate) fn update_parents(&self) {
-            let mut target = self.read().parent.clone();
-
-            let children_count = if let Some(vec) = &self.read().children {
-                vec.len()
-            } else {
-                1
-            };
-            self.write().depths[1] = children_count;
-            let mut depth = 2;
-            while let Some(ref parent_node) = target {
-                let Some(parent_node) = parent_node.upgrade() else {
-                    continue;
-                };
-                if parent_node.read().depths.len() <= depth {
-                    parent_node.write().depths.push(children_count);
-                } else {
-                    parent_node.write().depths[depth] += children_count;
-                }
-                target = parent_node.read().parent.clone();
-
-                depth += 1;
-            }
-        }
     }
     pub type SafeNode = Arc<TreeNode>;
 
@@ -215,11 +174,11 @@ pub mod hierarchy {
     pub(super) type ExclusionList = Arc<RwLock<HashSet<PathBuf>>>; // we don't keep a reference here
 
     pub struct FileHierarchy {
-        // TODO private
         pub root: SafeNode,
-        pub config: BehaviorConfig,
+        config: BehaviorConfig,
         exclusion_list: ExclusionList,
         sender: Sender<BFSQueueEntry>,
+        pub unread_updates: Arc<AtomicU64>,
     }
     #[derive(Clone, Copy)]
     pub struct EntryCreationContext<'a> {
@@ -294,9 +253,8 @@ pub mod hierarchy {
                                     child_node,
                                     start_path,
                                     style_config,
-                                    
                                 ));
-                                if buffer.len() == context.config.page_size  {
+                                if buffer.len() == context.config.page_size {
                                     if context.explore_fully {
                                         buffer.clear();
                                     } else {
@@ -333,6 +291,7 @@ pub mod hierarchy {
             let mut exclusion_list = ExclusionList::from(RwLock::from(HashSet::from_iter(
                 config.directory_exclusion_list.iter().cloned(),
             )));
+            let updater = Arc::new(AtomicU64::from(0));
             let root = TreeNode::new(
                 PathBuf::from(".").canonicalize().unwrap(),
                 None,
@@ -341,10 +300,11 @@ pub mod hierarchy {
             let thread_count = config.thread_count;
             let (tx, rx): (Sender<BFSQueueEntry>, Receiver<BFSQueueEntry>) = channel();
             let bored_queue_mask: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
-            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count- 1);
+            let mut workers: Vec<BFSThread> = Vec::with_capacity(thread_count - 1);
             for id in 0..thread_count - 1 {
                 workers.push(BFSThread::spin(
                     bored_queue_mask.clone(),
+                    updater.clone(),
                     id,
                     tx.clone(),
                     exclusion_list.clone(),
@@ -355,6 +315,7 @@ pub mod hierarchy {
                 sender: tx,
                 exclusion_list,
                 config: config.clone(),
+                unread_updates: updater,
             };
             std::thread::spawn(move || Self::contractor_thread(rx, workers, bored_queue_mask));
             hierarchy.sender.send(hierarchy.root.clone());
@@ -388,12 +349,6 @@ pub mod hierarchy {
             let prev_root = self.root.clone();
             self.root = TreeNode::new(path, None, Some(vec![prev_root.clone()]));
             prev_root.write().parent = Some(Arc::downgrade(&self.root));
-            let mut writer = self.root.write();
-            writer.depths[1] = 1;
-            for element in prev_root.read().depths.iter().skip(1) {
-                writer.depths.push(*element);
-            }
-            drop(writer);
             self.exclusion_list
                 .write()
                 .unwrap()
@@ -422,14 +377,5 @@ pub mod hierarchy {
                 tree::hierarchy::{EntryCreationContext, FileHierarchy},
             },
         };
-        // #[test]
-        // fn make() {
-        //     let config = BehaviorConfig::default();
-        //     let mut file_hierarchy = FileHierarchy::new(&config).unwrap();
-        //     file_hierarchy.step_back();
-        //     file_hierarchy.step_back();
-        //     file_hierarchy.step_back();
-        //     println!("{:?}", file_hierarchy.exclusion_list.read().unwrap())
-        // }
     }
 }

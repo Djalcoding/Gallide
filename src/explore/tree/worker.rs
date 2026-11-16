@@ -23,13 +23,14 @@ pub struct BFSThread {
 impl BFSThread {
     pub fn spin(
         bored_queues: Arc<AtomicU64>,
+        quota_updater: Arc<AtomicU64>,
         id: usize,
         dispatcher: Sender<BFSQueueEntry>,
         exclusion_list: ExclusionList,
     ) -> Self {
         let (tx, rx) = channel::<BFSQueueEntry>();
         let _ = std::thread::spawn(move || {
-            Self::bfs(dispatcher, rx, bored_queues, exclusion_list, id);
+            Self::bfs(dispatcher, rx, bored_queues, quota_updater, exclusion_list, id);
         });
         Self { transmitter: tx }
     }
@@ -38,6 +39,7 @@ impl BFSThread {
         dispatcher: Sender<BFSQueueEntry>,
         receiver: Receiver<BFSQueueEntry>,
         bored_queues: Arc<AtomicU64>,
+        quota_updater: Arc<AtomicU64>,
         exclusion_list: ExclusionList,
         id: usize,
     ) {
@@ -62,6 +64,10 @@ impl BFSThread {
                     let Ok(directory_contents) = fs::read_dir(origin.path()) else {
                         continue;
                     };
+
+                    // Lock RwLock early to reduce lock/unlock operations
+                    let mut origin_writer = origin.write();
+                    let mut additions = 0u64;
                     for child in directory_contents {
                         let Ok(entry) = child else { continue };
                         let child_path: PathBuf = entry.path();
@@ -82,8 +88,8 @@ impl BFSThread {
                         };
                         let child_node =
                             TreeNode::new(child_path, Some(origin_weak_ptr.clone()), node_children);
-                        origin
-                            .write()
+                        additions += 1;
+                        origin_writer
                             .children
                             .as_mut()
                             .unwrap()
@@ -96,13 +102,12 @@ impl BFSThread {
                             }
                         }
                     }
-                    origin
-                        .write()
+                    origin_writer
                         .children
                         .as_mut()
                         .unwrap()
                         .sort_unstable_by(TreeNode::order);
-                    origin.update_parents();
+                    quota_updater.fetch_add(additions, Release);
                 }
             }
         }

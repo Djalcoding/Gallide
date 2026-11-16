@@ -44,7 +44,6 @@ pub struct App {
     exited: bool,
     next_update: Instant,
     next_text_related_update: Option<Instant>,
-    prev_entry_count: usize,
 }
 
 impl App {
@@ -68,7 +67,6 @@ impl App {
             screen: Screen::start(&config),
             next_update: Instant::now(),
             next_text_related_update: None,
-            prev_entry_count: 0,
             config,
         };
         app.user_state.search_bar_text.reserve(200);
@@ -183,19 +181,11 @@ impl App {
         if goto_end {
             self.user_state.cursor = self.user_state.page_bounds.last_index();
         }
-        self.prev_entry_count = self.available_entries();
         if self.curr_list.is_empty() {
             self.rebuild_directories(true);
         }
     }
 
-    pub fn available_entries(&self) -> usize {
-        // check if I can use my variable
-        self.curr_node
-            .read()
-            .get_nested_entries(self.user_state.depth as usize)
-            - 1
-    }
 
     pub fn go_back_one_directory(&mut self) {
         let weak_parent = self.curr_node.read().parent.clone();
